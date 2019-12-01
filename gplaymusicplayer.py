@@ -2,6 +2,7 @@
 
 import atexit
 import os
+import random
 import signal
 import sys
 import termios
@@ -10,6 +11,7 @@ import tkinter as tk
 from tkinter import N, S, E, W
 
 from gmusicapi import Mobileclient
+from setproctitle import setproctitle
 import ttk
 import vlc
 
@@ -71,6 +73,142 @@ def buildUI():
    app = Application(master=root)
    return app
 
+def enable_echo(enable):
+    fd = sys.stdin.fileno()
+    new = termios.tcgetattr(fd)
+    if enable:
+        new[3] |= termios.ECHO
+    else:
+        new[3] &= ~termios.ECHO
+
+    termios.tcsetattr(fd, termios.TCSANOW, new)
+
+class TrackPlayer():
+   def __init__(self, api, key_listener):
+      self.api = api
+      self.key_listener = key_listener
+      self.setup_hotkeys()
+      songs = api.get_all_songs()
+      self.songs = {
+            song['id']: {
+                  'artist': song.get('artist'),
+                  'title': song.get('title'),
+               }
+            for song in songs
+         }
+      # List of track ids
+      self.tracks_to_play = []
+      self.current_track_index = None
+
+      self.player = None
+      self.progress_bar = None
+
+   def __del__(self):
+      self.cleanup_player()
+
+   def setup_hotkeys(self):
+      self.key_listener.register_hotkey(
+            "play_pause", (hotkeys.Key.ctrl, hotkeys.Key.up), self.toggle_play)
+      self.key_listener.register_hotkey(
+            "next", (hotkeys.Key.ctrl, hotkeys.Key.right), self.play_next_track)
+      self.key_listener.register_hotkey(
+            "prev", (hotkeys.Key.ctrl, hotkeys.Key.left),
+            self.handle_previous_track_action)
+
+   def activate_hotkeys(self):
+      # Hide keypressed from being echoed in the console
+      #  atexit.register(enable_echo, True)
+      #  enable_echo(False)
+      pass
+
+   def set_tracks_to_play(self, track_ids):
+      self.tracks_to_play = track_ids
+
+   def shuffle_tracks(self):
+      random.shuffle(self.tracks_to_play)
+
+   def handle_track_finished(self, event):
+      self.play_next_track()
+
+   def init_progress_bar(self, song_str):
+      from progress.bar import IncrementalBar
+
+      if self.progress_bar is not None:
+         self.progress_bar.finish()
+      self.progress_bar = IncrementalBar(song_str, max=100, suffix='%(percent)d%%')
+      self.progress_bar.goto(0)
+
+   def cleanup_player(self):
+      if self.player is not None:
+         if self.player.is_playing():
+            self.player.stop()
+         self.player.release()
+         self.player = None
+
+      if self.progress_bar is not None:
+         self.progress_bar.finish()
+         self.progress_bar = None
+
+   def update_progress_bar(self):
+      if self.player is not None and self.progress_bar is not None:
+         prog = min(int(self.player.get_position() * 100), 100)
+         self.progress_bar.goto(prog)
+
+   def _get_new_player(self, url):
+      self.cleanup_player()
+      self.player = vlc.MediaPlayer(url)
+      self.player.event_manager().event_attach(vlc.EventType.MediaPlayerEndReached,
+                                               self.handle_track_finished)
+
+      return self.player
+
+   def play_current_track(self):
+      self.cleanup_player()
+
+      song_id = self.tracks_to_play[self.current_track_index]
+      song_info = self.songs.get(song_id)
+      song_str = "Unknown - Unknown"
+      if song_info:
+         song_str = "{0} - {1}".format(song_info['title'], song_info['artist'])
+
+      url = self.api.get_stream_url(song_id)
+      self._get_new_player(url).play()
+      # Quick sleep, to avoid printing the bar over anything printed in the media thread
+      sleep(1.0)
+      self.init_progress_bar(song_str)
+
+   def handle_previous_track_action(self):
+      if self.player is not None and self.player.get_position() > 0.1:
+         # Song is 10% done. Restart the track rather than going back.
+         self.player.set_position(0.0)
+         return
+
+      if self.current_track_index is None or self.current_track_index <= 0:
+         self.current_track_index = 0
+      else:
+         self.current_track_index -=1
+
+      #  if self.player is not None and self.player.is_playing():
+      self.play_current_track()
+
+   def play_next_track(self):
+      if self.current_track_index is None:
+         self.current_track_index = 0
+      else:
+         self.current_track_index += 1
+      if self.current_track_index >= len(self.tracks_to_play):
+         return False
+
+      self.play_current_track()
+
+   def toggle_play(self):
+      if self.player is None:
+         self.play_next_track()
+      elif self.player.is_playing():
+         self.player.pause()
+      else:
+         self.player.play()
+
 def player_test(api, key_listener):
    #  playlists = api.get_all_playlists()
    playlists = api.get_all_user_playlist_contents()
@@ -83,53 +221,41 @@ def player_test(api, key_listener):
       return
 
    playlist = playlists[index]
+   del playlists
 
-   #  songs = api.get_all_songs()
-   song_id = None
-   url = None
-   #  for song in songs:
-      #  if song['title'] == "Sandstorm":
-         #  song_id = song['id']
-   song_id = playlist['tracks'][0]['trackId']
+   player = TrackPlayer(api, key_listener)
+   trackIds = [t['trackId'] for t in playlist['tracks']]
+   del playlist
+   player.set_tracks_to_play(trackIds)
+   player.shuffle_tracks()
+
+   key_listener.start()
+   player.toggle_play()
 
    # Hide keypressed from being echoed in the console
-   atexit.register(enable_echo, True)
-   enable_echo(False)
-
-   url = api.get_stream_url(song_id)
-   player = vlc.MediaPlayer(url)
-   player.play()
-   playing = True
-
-   def toggle_player():
-      nonlocal playing
-      if playing:
-         player.pause()
-         playing = False
-      else:
-         player.play()
-         playing = True
-
-   key_listener.register_hotkey("play_pause", (hotkeys.Key.ctrl, hotkeys.Key.up),
-                                toggle_player)
+   if 'ECHO_KEYS' not in os.environ:
+      atexit.register(enable_echo, True)
+      enable_echo(False)
 
    try:
-      signal.pause()
+      while True:
+         sleep(1)
+         player.update_progress_bar()
    except KeyboardInterrupt:
       print("\nReceived Ctrl-C")
-   player.release()
+      exited = True
 
-def enable_echo(enable):
-    fd = sys.stdin.fileno()
-    new = termios.tcgetattr(fd)
-    if enable:
-        new[3] |= termios.ECHO
-    else:
-        new[3] &= ~termios.ECHO
-
-    termios.tcsetattr(fd, termios.TCSANOW, new)
+   #  exited = False
+   #  while not exited:
+      #  try:
+         #  signal.pause()
+      #  except KeyboardInterrupt:
+         #  print("\nReceived Ctrl-C")
+         #  exited = True
 
 def main():
+   setproctitle("gplaymusicplayer")
+
    api = Mobileclient()
    if not os.path.exists(oauth_file):
       api.perform_oauth(oauth_file)
@@ -138,7 +264,6 @@ def main():
    api.oauth_login(device_id, oauth_credentials=oauth_file)
 
    kl = hotkeys.HotkeyListener()
-   kl.start()
 
    kl.register_hotkey("foo", (hotkeys.Key.ctrl, 'y'),
                       lambda: print("did foo!"))
