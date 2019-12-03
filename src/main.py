@@ -232,6 +232,7 @@ def quick_player_test(api, key_listener):
          player.update_progress_bar()
    except KeyboardInterrupt:
       print("\nReceived Ctrl-C")
+      player.cleanup_player()
       exited = True
 
 def player_test(api, key_listener):
@@ -268,6 +269,7 @@ def player_test(api, key_listener):
          player.update_progress_bar()
    except KeyboardInterrupt:
       print("\nReceived Ctrl-C")
+      player.cleanup_player()
       exited = True
 
    #  exited = False
