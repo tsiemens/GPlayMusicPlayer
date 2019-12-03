@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import atexit
 import os
 import random
@@ -209,6 +210,27 @@ class TrackPlayer():
       else:
          self.player.play()
 
+def quick_player_test(api, key_listener):
+   player = TrackPlayer(api, key_listener)
+   player.set_tracks_to_play(list(player.songs.keys()))
+   player.shuffle_tracks()
+
+   key_listener.start()
+   player.toggle_play()
+
+   # Hide keypressed from being echoed in the console
+   if 'ECHO_KEYS' not in os.environ:
+      atexit.register(enable_echo, True)
+      enable_echo(False)
+
+   try:
+      while True:
+         sleep(1)
+         player.update_progress_bar()
+   except KeyboardInterrupt:
+      print("\nReceived Ctrl-C")
+      exited = True
+
 def player_test(api, key_listener):
    #  playlists = api.get_all_playlists()
    playlists = api.get_all_user_playlist_contents()
@@ -256,6 +278,11 @@ def player_test(api, key_listener):
 def main():
    setproctitle("gplaymusicplayer")
 
+   parser = argparse.ArgumentParser()
+   parser.add_argument('--quick-test', action='store_true',
+                       help="Load a set of songs quickly for testing")
+   args = parser.parse_args()
+
    api = Mobileclient()
    if not os.path.exists(oauth_file):
       api.perform_oauth(oauth_file)
@@ -268,13 +295,10 @@ def main():
    kl.register_hotkey("foo", (hotkeys.Key.ctrl, 'y'),
                       lambda: print("did foo!"))
 
-   player_test(api, kl)
-
-   #  import signal
-   #  try:
-      #  signal.pause()
-   #  except KeyboardInterrupt:
-      #  print("\nReceived Ctrl-C")
+   if args.quick_test:
+      quick_player_test(api, kl)
+   else:
+      player_test(api, kl)
 
    #  key_test()
    #  pdb.set_trace()
