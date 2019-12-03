@@ -16,7 +16,10 @@ from setproctitle import setproctitle
 import ttk
 import vlc
 
-import hotkeys
+from gpmp import hotkeys
+from gpmp.log import get_logger
+
+log = get_logger("main")
 
 import pdb
 
