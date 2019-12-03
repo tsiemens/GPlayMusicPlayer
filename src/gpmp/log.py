@@ -30,6 +30,8 @@ def set_logger_levels():
    """
 
    logging_levels_str = os.environ.get("LOGGING")
+   if not logging_levels_str:
+      return
    levels = logging_levels_str.split(',')
    for name_and_level in levels:
       if '/' in name_and_level:
