@@ -49,7 +49,7 @@ class HotkeyListener():
       self.hotkey_combos[name] = (set(keys), action)
 
    def sanitize_key(self, key):
-      if hasattr(key, 'char'):
+      if hasattr(key, 'char') and key.char is not None:
          lower = key.char.lower()
          if (lower == key.char and lower not in string.ascii_lowercase
              and lower not in _special_chars_lower):

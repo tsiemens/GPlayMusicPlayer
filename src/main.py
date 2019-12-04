@@ -134,6 +134,9 @@ class TrackPlayer():
    def handle_track_finished(self, event):
       self.play_next_track()
 
+   def handle_player_event(self, event):
+      log.debug("handle_player_event: {}".format(event))
+
    def init_progress_bar(self, song_str):
       from progress.bar import IncrementalBar
 
@@ -161,8 +164,21 @@ class TrackPlayer():
    def _get_new_player(self, url):
       self.cleanup_player()
       self.player = vlc.MediaPlayer(url)
+      # https://www.olivieraubert.net/vlc/python-ctypes/doc/vlc.EventType-class.html
       self.player.event_manager().event_attach(vlc.EventType.MediaPlayerEndReached,
                                                self.handle_track_finished)
+
+      event_blacklist = set([vlc.EventType.MediaPlayerTimeChanged,
+                             vlc.EventType.MediaPlayerPositionChanged,
+                             vlc.EventType.MediaPlayerLengthChanged,
+                             vlc.EventType.MediaPlayerBuffering,
+                             vlc.EventType.MediaPlayerAudioVolume])
+      for attr in dir(vlc.EventType):
+         if attr.startswith("Media") or attr.startswith("Vlm"):
+            event = getattr(vlc.EventType, attr)
+            if event not in event_blacklist:
+               self.player.event_manager().event_attach(event,
+                                                        self.handle_player_event)
 
       return self.player
 
@@ -176,7 +192,9 @@ class TrackPlayer():
          song_str = "{0} - {1}".format(song_info['title'], song_info['artist'])
 
       url = self.api.get_stream_url(song_id)
-      self._get_new_player(url).play()
+      code = self._get_new_player(url).play()
+      if code != 0:
+         log.error("play_current_track: player.play returned error: {}".format(code))
       # Quick sleep, to avoid printing the bar over anything printed in the media thread
       sleep(1.0)
       self.init_progress_bar(song_str)
@@ -211,7 +229,9 @@ class TrackPlayer():
       elif self.player.is_playing():
          self.player.pause()
       else:
-         self.player.play()
+         code = self.player.play()
+         if code != 0:
+            log.error("toggle_play: player.play returned error: {}".format(code))
 
 def get_user_selected_playlist_tracks(api):
    playlists = api.get_all_user_playlist_contents()
