@@ -213,30 +213,7 @@ class TrackPlayer():
       else:
          self.player.play()
 
-def quick_player_test(api, key_listener):
-   player = TrackPlayer(api, key_listener)
-   player.set_tracks_to_play(list(player.songs.keys()))
-   player.shuffle_tracks()
-
-   key_listener.start()
-   player.toggle_play()
-
-   # Hide keypressed from being echoed in the console
-   if 'ECHO_KEYS' not in os.environ:
-      atexit.register(enable_echo, True)
-      enable_echo(False)
-
-   try:
-      while True:
-         sleep(1)
-         player.update_progress_bar()
-   except KeyboardInterrupt:
-      print("\nReceived Ctrl-C")
-      player.cleanup_player()
-      exited = True
-
-def player_test(api, key_listener):
-   #  playlists = api.get_all_playlists()
+def get_user_selected_playlist_tracks(api):
    playlists = api.get_all_user_playlist_contents()
    for i, playlist in enumerate(playlists):
       print("[{0}]: {1}".format(i, playlist['name']))
@@ -244,14 +221,21 @@ def player_test(api, key_listener):
    index = int(input("\nSelect a playlist. "))
    if index >= len(playlists):
       print("No playlist at that index.")
-      return
+      return None
 
    playlist = playlists[index]
    del playlists
 
+   return [t['trackId'] for t in playlist['tracks']]
+
+def run_cli_player(api, key_listener, play_all_songs=False):
    player = TrackPlayer(api, key_listener)
-   trackIds = [t['trackId'] for t in playlist['tracks']]
-   del playlist
+
+   if play_all_songs:
+      trackIds = list(player.songs.keys())
+   else:
+      trackIds = get_user_selected_playlist_tracks(api)
+
    player.set_tracks_to_play(trackIds)
    player.shuffle_tracks()
 
@@ -284,8 +268,8 @@ def main():
    setproctitle("gplaymusicplayer")
 
    parser = argparse.ArgumentParser()
-   parser.add_argument('--quick-test', action='store_true',
-                       help="Load a set of songs quickly for testing")
+   parser.add_argument('--all-songs', action='store_true',
+                       help="Play all songs in the library, rather than selecting a playlist")
    args = parser.parse_args()
 
    api = Mobileclient()
@@ -297,16 +281,7 @@ def main():
 
    kl = hotkeys.HotkeyListener()
 
-   kl.register_hotkey("foo", (hotkeys.Key.ctrl, 'y'),
-                      lambda: print("did foo!"))
-
-   if args.quick_test:
-      quick_player_test(api, kl)
-   else:
-      player_test(api, kl)
-
-   #  key_test()
-   #  pdb.set_trace()
+   run_cli_player(api, kl, play_all_songs=args.all_songs)
 
    #  app = buildUI()
    #  app.mainloop()
