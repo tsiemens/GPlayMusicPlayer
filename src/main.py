@@ -18,10 +18,9 @@ import vlc
 
 from gpmp import hotkeys
 from gpmp.log import get_logger
+from gpmp.util import enable_echo, pdb
 
 log = get_logger("main")
-
-import pdb
 
 oauth_file = os.path.join(os.path.dirname(__file__), "oauth.json")
 #  oauth_file = Mobileclient.OAUTH_FILEPATH
@@ -77,16 +76,6 @@ def buildUI():
    app = Application(master=root)
    return app
 
-def enable_echo(enable):
-    fd = sys.stdin.fileno()
-    new = termios.tcgetattr(fd)
-    if enable:
-        new[3] |= termios.ECHO
-    else:
-        new[3] &= ~termios.ECHO
-
-    termios.tcsetattr(fd, termios.TCSANOW, new)
-
 class TrackPlayer():
    def __init__(self, api, key_listener):
       self.api = api
@@ -118,6 +107,10 @@ class TrackPlayer():
       self.key_listener.register_hotkey(
             "prev", (hotkeys.Key.ctrl, hotkeys.Key.left),
             self.handle_previous_track_action)
+      self.key_listener.register_hotkey(
+            "skip-to-end",
+            (hotkeys.Key.shift, hotkeys.Key.ctrl, hotkeys.Key.right),
+            self.skip_to_end)
 
    def activate_hotkeys(self):
       # Hide keypressed from being echoed in the console
@@ -131,11 +124,13 @@ class TrackPlayer():
    def shuffle_tracks(self):
       random.shuffle(self.tracks_to_play)
 
-   def handle_track_finished(self, event):
+   def handle_track_finished(self):
       self.play_next_track()
 
    def handle_player_event(self, event):
       log.debug("handle_player_event: {}".format(event))
+      if event.type == vlc.EventType.MediaPlayerEndReached:
+         self.handle_track_finished()
 
    def init_progress_bar(self, song_str):
       from progress.bar import IncrementalBar
@@ -164,10 +159,8 @@ class TrackPlayer():
    def _get_new_player(self, url):
       self.cleanup_player()
       self.player = vlc.MediaPlayer(url)
+      self.player.retain()
       # https://www.olivieraubert.net/vlc/python-ctypes/doc/vlc.EventType-class.html
-      self.player.event_manager().event_attach(vlc.EventType.MediaPlayerEndReached,
-                                               self.handle_track_finished)
-
       event_blacklist = set([vlc.EventType.MediaPlayerTimeChanged,
                              vlc.EventType.MediaPlayerPositionChanged,
                              vlc.EventType.MediaPlayerLengthChanged,
@@ -195,9 +188,13 @@ class TrackPlayer():
       code = self._get_new_player(url).play()
       if code != 0:
          log.error("play_current_track: player.play returned error: {}".format(code))
+         return False
+
+      log.info("play_current_track: Started player: OK")
       # Quick sleep, to avoid printing the bar over anything printed in the media thread
       sleep(1.0)
       self.init_progress_bar(song_str)
+      return True
 
    def handle_previous_track_action(self):
       if self.player is not None and self.player.get_position() > 0.1:
@@ -214,14 +211,21 @@ class TrackPlayer():
       self.play_current_track()
 
    def play_next_track(self):
+      log.info("play_next_track: current_track_index {}".format(self.current_track_index))
       if self.current_track_index is None:
          self.current_track_index = 0
       else:
          self.current_track_index += 1
+
       if self.current_track_index >= len(self.tracks_to_play):
+         log.info("play_next_track: Reached end of track list")
          return False
 
-      self.play_current_track()
+      return self.play_current_track()
+
+   def skip_to_end(self):
+      if self.player is not None:
+         self.player.set_position(0.97)
 
    def toggle_play(self):
       if self.player is None:
