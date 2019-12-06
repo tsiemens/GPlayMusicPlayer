@@ -2,6 +2,7 @@
 
 import argparse
 import atexit
+from dataclasses import dataclass
 import os
 import random
 import signal
@@ -76,7 +77,28 @@ def buildUI():
    app = Application(master=root)
    return app
 
-class TrackPlayer():
+class MediaPlayer:
+   def __init__(self, url):
+      self.player = vlc.MediaPlayer(url)
+
+   def __del__(self):
+      """NOTE: This MUST not be called from within an event callback from the
+      player.
+      """
+      if self.player.is_playing():
+         self.player.stop()
+
+      self.player.release()
+
+   def __getattr__(self, attr):
+      return getattr(self.player, attr)
+
+@dataclass
+class PlayerEvent:
+   event_str: str
+   track_index: int
+
+class TrackPlayer:
    def __init__(self, api, key_listener):
       self.api = api
       self.key_listener = key_listener
@@ -95,9 +117,10 @@ class TrackPlayer():
 
       self.player = None
       self.progress_bar = None
+      self.pending_events = []
 
    def __del__(self):
-      self.cleanup_player()
+      self.reset_progress_bar()
 
    def setup_hotkeys(self):
       self.key_listener.register_hotkey(
@@ -130,7 +153,8 @@ class TrackPlayer():
    def handle_player_event(self, event):
       log.debug("handle_player_event: {}".format(event))
       if event.type == vlc.EventType.MediaPlayerEndReached:
-         self.handle_track_finished()
+         self.pending_events.append(PlayerEvent(str(event.type),
+                                                    self.current_track_index))
 
    def init_progress_bar(self, song_str):
       from progress.bar import IncrementalBar
@@ -140,13 +164,7 @@ class TrackPlayer():
       self.progress_bar = IncrementalBar(song_str, max=100, suffix='%(percent)d%%')
       self.progress_bar.goto(0)
 
-   def cleanup_player(self):
-      if self.player is not None:
-         if self.player.is_playing():
-            self.player.stop()
-         self.player.release()
-         self.player = None
-
+   def reset_progress_bar(self):
       if self.progress_bar is not None:
          self.progress_bar.finish()
          self.progress_bar = None
@@ -156,16 +174,26 @@ class TrackPlayer():
          prog = min(int(self.player.get_position() * 100), 100)
          self.progress_bar.goto(prog)
 
-   def _get_new_player(self, url):
-      self.cleanup_player()
-      self.player = vlc.MediaPlayer(url)
-      self.player.retain()
+   def _get_player_for_url(self, url):
+      self.reset_progress_bar()
+      if not self.player:
+         self.player = MediaPlayer(url)
+      else:
+         self.player.set_mrl(url)
       # https://www.olivieraubert.net/vlc/python-ctypes/doc/vlc.EventType-class.html
       event_blacklist = set([vlc.EventType.MediaPlayerTimeChanged,
                              vlc.EventType.MediaPlayerPositionChanged,
                              vlc.EventType.MediaPlayerLengthChanged,
                              vlc.EventType.MediaPlayerBuffering,
-                             vlc.EventType.MediaPlayerAudioVolume])
+                             vlc.EventType.MediaPlayerAudioVolume,
+                             vlc.EventType.MediaPlayerAudioDevice,
+                             vlc.EventType.MediaPlayerESSelected,
+                             vlc.EventType.MediaPlayerESAdded,
+                             vlc.EventType.MediaPlayerESDeleted,
+                             vlc.EventType.MediaPlayerScrambledChanged,
+                             vlc.EventType.MediaPlayerPausableChanged,
+                             vlc.EventType.MediaPlayerSeekableChanged,
+                             ])
       for attr in dir(vlc.EventType):
          if attr.startswith("Media") or attr.startswith("Vlm"):
             event = getattr(vlc.EventType, attr)
@@ -176,7 +204,7 @@ class TrackPlayer():
       return self.player
 
    def play_current_track(self):
-      self.cleanup_player()
+      self.reset_progress_bar()
 
       song_id = self.tracks_to_play[self.current_track_index]
       song_info = self.songs.get(song_id)
@@ -185,7 +213,7 @@ class TrackPlayer():
          song_str = "{0} - {1}".format(song_info['title'], song_info['artist'])
 
       url = self.api.get_stream_url(song_id)
-      code = self._get_new_player(url).play()
+      code = self._get_player_for_url(url).play()
       if code != 0:
          log.error("play_current_track: player.play returned error: {}".format(code))
          return False
@@ -237,6 +265,31 @@ class TrackPlayer():
          if code != 0:
             log.error("toggle_play: player.play returned error: {}".format(code))
 
+   def do_thread_loop(self):
+      if self.pending_events:
+         log.debug("do_thread_loop: n pending_events: {}".format(
+                   len(self.pending_events)))
+      while self.pending_events:
+         event = self.pending_events.pop(0)
+         log.debug("do_thread_loop event {}".format(event))
+         if event.track_index != self.current_track_index:
+            log.debug("do_thread_loop ignoring event for other track")
+            continue
+
+         if event.event_str == str(vlc.EventType.MediaPlayerEndReached):
+            log.debug("do_thread_loop: track finished")
+            self.handle_track_finished()
+
+   def loop(self):
+      time_since_progress_update = 0.0
+      while True:
+         sleep(0.1)
+         time_since_progress_update += 0.1
+         self.do_thread_loop()
+         if time_since_progress_update >= 1.0:
+            self.update_progress_bar()
+            time_since_progress_update = 0.0
+
 def get_user_selected_playlist_tracks(api):
    playlists = api.get_all_user_playlist_contents()
    for i, playlist in enumerate(playlists):
@@ -272,12 +325,10 @@ def run_cli_player(api, key_listener, play_all_songs=False):
       enable_echo(False)
 
    try:
-      while True:
-         sleep(1)
-         player.update_progress_bar()
+      player.loop()
    except KeyboardInterrupt:
       print("\nReceived Ctrl-C")
-      player.cleanup_player()
+      player.reset_progress_bar()
       exited = True
 
    #  exited = False
