@@ -22,8 +22,7 @@ from gpmp.util import enable_echo, pdb
 
 log = get_logger("main")
 
-oauth_file = os.path.join(os.path.dirname(__file__), "oauth.json")
-#  oauth_file = Mobileclient.OAUTH_FILEPATH
+oauth_file = Mobileclient.OAUTH_FILEPATH
 
 class Application(tk.Frame):
    def __init__(self, master=None):
