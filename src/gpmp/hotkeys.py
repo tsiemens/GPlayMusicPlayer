@@ -56,7 +56,7 @@ class HotkeyListener():
             lower = _char_lower_map.get(lower)
 
          if lower is None:
-            log.info("sanitize_key({}) returned None".format(key.char))
+            log.info("key: {} returned None".format(key.char))
             return None
          return keyboard.KeyCode.from_char(lower)
       return key

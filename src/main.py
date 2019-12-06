@@ -98,19 +98,23 @@ class PlayerEvent:
    event_str: str
    track_index: int
 
+def get_all_songs_dict(api):
+   songs = api.get_all_songs()
+   return {
+         song['id']: {
+               'artist': song.get('artist'),
+               'title': song.get('title'),
+            }
+         for song in songs
+      }
+
 class TrackPlayer:
    def __init__(self, api, key_listener):
       self.api = api
       self.key_listener = key_listener
       self.setup_hotkeys()
       songs = api.get_all_songs()
-      self.songs = {
-            song['id']: {
-                  'artist': song.get('artist'),
-                  'title': song.get('title'),
-               }
-            for song in songs
-         }
+      self.songs = get_all_songs_dict(api)
       # List of track ids
       self.tracks_to_play = []
       self.current_track_index = None
@@ -151,7 +155,7 @@ class TrackPlayer:
       self.play_next_track()
 
    def handle_player_event(self, event):
-      log.debug("handle_player_event: {}".format(event))
+      log.debug("{}".format(event))
       if event.type == vlc.EventType.MediaPlayerEndReached:
          self.pending_events.append(PlayerEvent(str(event.type),
                                                     self.current_track_index))
@@ -211,14 +215,16 @@ class TrackPlayer:
       song_str = "Unknown - Unknown"
       if song_info:
          song_str = "{0} - {1}".format(song_info['title'], song_info['artist'])
+      else:
+         log.error("Could not find track info for {}".format(song_id))
 
       url = self.api.get_stream_url(song_id)
       code = self._get_player_for_url(url).play()
       if code != 0:
-         log.error("play_current_track: player.play returned error: {}".format(code))
+         log.error("player.play returned error: {}".format(code))
          return False
 
-      log.info("play_current_track: Started player: OK")
+      log.info("Started player: OK")
       # Quick sleep, to avoid printing the bar over anything printed in the media thread
       sleep(1.0)
       self.init_progress_bar(song_str)
@@ -239,14 +245,14 @@ class TrackPlayer:
       self.play_current_track()
 
    def play_next_track(self):
-      log.info("play_next_track: current_track_index {}".format(self.current_track_index))
+      log.info("current_track_index {}".format(self.current_track_index))
       if self.current_track_index is None:
          self.current_track_index = 0
       else:
          self.current_track_index += 1
 
       if self.current_track_index >= len(self.tracks_to_play):
-         log.info("play_next_track: Reached end of track list")
+         log.info("Reached end of track list")
          return False
 
       return self.play_current_track()
@@ -263,21 +269,21 @@ class TrackPlayer:
       else:
          code = self.player.play()
          if code != 0:
-            log.error("toggle_play: player.play returned error: {}".format(code))
+            log.error("player.play returned error: {}".format(code))
 
    def do_thread_loop(self):
       if self.pending_events:
-         log.debug("do_thread_loop: n pending_events: {}".format(
+         log.debug("n pending_events: {}".format(
                    len(self.pending_events)))
       while self.pending_events:
          event = self.pending_events.pop(0)
-         log.debug("do_thread_loop event {}".format(event))
+         log.debug("event {}".format(event))
          if event.track_index != self.current_track_index:
-            log.debug("do_thread_loop ignoring event for other track")
+            log.debug("ignoring event for other track")
             continue
 
          if event.event_str == str(vlc.EventType.MediaPlayerEndReached):
-            log.debug("do_thread_loop: track finished")
+            log.debug("track finished")
             self.handle_track_finished()
 
    def loop(self):

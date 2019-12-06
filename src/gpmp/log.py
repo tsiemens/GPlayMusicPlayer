@@ -4,7 +4,7 @@ import os
 import tempfile
 
 #  _format = '%(asctime)s %(levelname)s %(funcName)s(%(lineno)d) %(message)s'
-_format = '%(asctime)s %(name)s:%(levelname)s %(message)s'
+_format = '%(asctime)s %(name)s:%(levelname)s %(funcName)s: %(message)s'
 _log_format = logging.Formatter(_format)
 
 log_file = os.path.join(tempfile.gettempdir(), "gplaymusicplayer.log")
@@ -52,7 +52,7 @@ _log_logger.addHandler(_handler)
 def get_logger(name):
    log = logging.getLogger(name)
    level = _logging_levels.get(name, logging.WARNING)
-   _log_logger.info("get_logger: {}/{}".format(name, level_to_level_abrev[level]))
+   _log_logger.info("{}/{}".format(name, level_to_level_abrev[level]))
    log.setLevel(_logging_levels.get(name, logging.WARNING))
    log.addHandler(_handler)
    return log
