@@ -4,3 +4,6 @@ python-vlc>=3.0.7110
 pynput==1.4.5
 progress==1.5
 setproctitle>=1.1.10
+system_hotkey==1.0.3
+xcffib==0.8.1
+xpybutil==0.0.6

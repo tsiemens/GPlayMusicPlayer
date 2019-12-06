@@ -5,7 +5,6 @@ import atexit
 from dataclasses import dataclass
 import os
 import random
-import signal
 import sys
 import termios
 from time import sleep
@@ -14,10 +13,10 @@ from tkinter import N, S, E, W
 
 from gmusicapi import Mobileclient
 from setproctitle import setproctitle
+from system_hotkey import SystemHotkey
 import ttk
 import vlc
 
-from gpmp import hotkeys
 from gpmp.log import get_logger
 from gpmp.util import enable_echo, pdb
 
@@ -109,9 +108,9 @@ def get_all_songs_dict(api):
       }
 
 class TrackPlayer:
-   def __init__(self, api, key_listener):
+   def __init__(self, api, hotkey_mgr):
       self.api = api
-      self.key_listener = key_listener
+      self.hotkey_mgr = hotkey_mgr
       self.setup_hotkeys()
       songs = api.get_all_songs()
       self.songs = get_all_songs_dict(api)
@@ -127,23 +126,25 @@ class TrackPlayer:
       self.reset_progress_bar()
 
    def setup_hotkeys(self):
-      self.key_listener.register_hotkey(
-            "play_pause", (hotkeys.Key.ctrl, hotkeys.Key.up), self.toggle_play)
-      self.key_listener.register_hotkey(
-            "next", (hotkeys.Key.ctrl, hotkeys.Key.right), self.play_next_track)
-      self.key_listener.register_hotkey(
-            "prev", (hotkeys.Key.ctrl, hotkeys.Key.left),
-            self.handle_previous_track_action)
-      self.key_listener.register_hotkey(
-            "skip-to-end",
-            (hotkeys.Key.shift, hotkeys.Key.ctrl, hotkeys.Key.right),
-            self.skip_to_end)
-
-   def activate_hotkeys(self):
-      # Hide keypressed from being echoed in the console
-      #  atexit.register(enable_echo, True)
-      #  enable_echo(False)
-      pass
+      self.hotkey_mgr.register(('control', 'up'),
+                               callback=lambda _: self.toggle_play())
+      self.hotkey_mgr.register(('control', 'right'),
+                               callback=lambda _: self.play_next_track())
+      self.hotkey_mgr.register(('control', 'left'),
+                               callback=lambda _: self.handle_previous_track_action())
+      self.hotkey_mgr.register(('control', 'shift', 'right'),
+                               callback=lambda _: self.skip_to_end())
+      #  self.hotkey_mgr.register_hotkey(
+            #  "play_pause", (hotkeys.Key.ctrl, hotkeys.Key.up), self.toggle_play)
+      #  self.hotkey_mgr.register_hotkey(
+            #  "next", (hotkeys.Key.ctrl, hotkeys.Key.right), self.play_next_track)
+      #  self.hotkey_mgr.register_hotkey(
+            #  "prev", (hotkeys.Key.ctrl, hotkeys.Key.left),
+            #  self.handle_previous_track_action)
+      #  self.hotkey_mgr.register_hotkey(
+            #  "skip-to-end",
+            #  (hotkeys.Key.shift, hotkeys.Key.ctrl, hotkeys.Key.right),
+            #  self.skip_to_end)
 
    def set_tracks_to_play(self, track_ids):
       self.tracks_to_play = track_ids
@@ -311,8 +312,8 @@ def get_user_selected_playlist_tracks(api):
 
    return [t['trackId'] for t in playlist['tracks']]
 
-def run_cli_player(api, key_listener, play_all_songs=False):
-   player = TrackPlayer(api, key_listener)
+def run_cli_player(api, hotkey_mgr, play_all_songs=False):
+   player = TrackPlayer(api, hotkey_mgr)
 
    if play_all_songs:
       trackIds = list(player.songs.keys())
@@ -322,13 +323,7 @@ def run_cli_player(api, key_listener, play_all_songs=False):
    player.set_tracks_to_play(trackIds)
    player.shuffle_tracks()
 
-   key_listener.start()
    player.toggle_play()
-
-   # Hide keypressed from being echoed in the console
-   if 'ECHO_KEYS' not in os.environ:
-      atexit.register(enable_echo, True)
-      enable_echo(False)
 
    try:
       player.loop()
@@ -336,14 +331,6 @@ def run_cli_player(api, key_listener, play_all_songs=False):
       print("\nReceived Ctrl-C")
       player.reset_progress_bar()
       exited = True
-
-   #  exited = False
-   #  while not exited:
-      #  try:
-         #  signal.pause()
-      #  except KeyboardInterrupt:
-         #  print("\nReceived Ctrl-C")
-         #  exited = True
 
 def main():
    setproctitle("gplaymusicplayer")
@@ -360,9 +347,9 @@ def main():
    device_id = Mobileclient.FROM_MAC_ADDRESS
    api.oauth_login(device_id, oauth_credentials=oauth_file)
 
-   kl = hotkeys.HotkeyListener()
+   hotkey_mgr = SystemHotkey()
 
-   run_cli_player(api, kl, play_all_songs=args.all_songs)
+   run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
 
    #  app = buildUI()
    #  app.mainloop()
