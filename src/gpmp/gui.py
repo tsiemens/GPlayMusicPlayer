@@ -1,8 +1,13 @@
 
 import sys
 import random
+from time import sleep
 from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2.QtWidgets import QSizePolicy
+
+from gpmp.log import get_logger
+
+log = get_logger("gui")
 
 import pdb
 
@@ -31,6 +36,7 @@ class Window(QtWidgets.QWidget):
       self.progress_text.setAlignment(QtCore.Qt.AlignLeft)
 
       self.play_pause_button = QtWidgets.QPushButton("Play/Pause")
+      self.play_pause_button.setDisabled(True)
       # Despite the policy being "maximum", this shrinks the button to the
       # text size
       sp = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
@@ -54,7 +60,11 @@ class Window(QtWidgets.QWidget):
       try:
          self.progress_bar.setValue(int(prog))
       except Exception as e:
-         print("set_progress_percent: Caught exception", e)
+         log.error("caught exception: {}".format(e))
+
+   def set_song_info(self, song_info: str):
+      if song_info is not None:
+         self.track_info.setText(song_info)
 
    def do_test_layout(self):
       self.hello = ["Hallo Welt", "Hei maailma", "Hola Mundo", "Привет мир"] * 20
@@ -68,7 +78,6 @@ class Window(QtWidgets.QWidget):
       for f in self.hello:
           model.appendRow(QtGui.QStandardItem(f))
       self.list.setModel(model)
-      pdb.set_trace()
 
       sp = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
       sp.setHorizontalStretch(1)
@@ -139,9 +148,13 @@ class Window(QtWidgets.QWidget):
 
 class WorkerThread(QtCore.QThread):
    prog_signal = QtCore.Signal(int)
+   song_info_signal = QtCore.Signal(str)
 
-   def __init__(self):
+   def __init__(self, player):
       QtCore.QThread.__init__(self)
+      self.player = player
+
+      self.current_song_info = None
       self.interrupted = False
       self.self_terminated = False
 
@@ -152,17 +165,23 @@ class WorkerThread(QtCore.QThread):
    def interrupt(self):
       self.interrupted = True
 
-   def run(self):
-      print("WorkerThread.run")
-      from time import sleep
-      for ii in range(100):
-         if self.interrupted:
-            print("WorkerThread interrupted")
-            break
-         sleep(1.0)
-         print("WorkerThread.run:", ii)
-         self.prog_signal.emit(ii)
+   def send_ui_update_signal(self):
+      if self.player is not None:
+         prog = min(int(self.player.get_position() * 100), 100)
+         self.prog_signal.emit(prog)
 
+         player_current_song_info = self.player.current_song_info.value
+         if player_current_song_info != self.current_song_info:
+            self.current_song_info = player_current_song_info
+            self.song_info_signal.emit(player_current_song_info)
+
+   def run(self):
+      log.debug("WorkerThread.run")
+      while not self.interrupted:
+         sleep(0.5)
+         self.send_ui_update_signal()
+
+      log.info("WorkerThread interrupted")
       self.terminate()
       self.self_terminated = True
 
@@ -171,13 +190,15 @@ class QtController(QtCore.QObject):
    worker_start_signal = QtCore.Signal()
    worker_interrupt_signal = QtCore.Signal()
 
-   def __init__(self, parent=None):
+   def __init__(self, parent, player):
       super(self.__class__, self).__init__(parent)
+
+      self.player = player
 
       # Create a gui object.
       self.gui = Window()
 
-      self.gui.resize(800, 600)
+      self.gui.resize(400, 0)
 
       # Create a new worker thread.
       self.createWorkerThread()
@@ -198,9 +219,9 @@ class QtController(QtCore.QObject):
 
       self.parent().aboutToQuit.connect(self.forceWorkerQuit)
 
-      self.custom_worker_thread = WorkerThread()
-      pdb.set_trace()
+      self.custom_worker_thread = WorkerThread(self.player)
       self.custom_worker_thread.prog_signal.connect(self.gui.set_progress_percent)
+      self.custom_worker_thread.song_info_signal.connect(self.gui.set_song_info)
       self.custom_worker_thread.start()
 
 
@@ -222,22 +243,7 @@ class QtController(QtCore.QObject):
             #  if self.custom_worker_thread.isRunning():
                #  self.custom_worker_thread.wait()
       except Exception as e:
-         print("forceWorkerQuit: caught exception:", e)
+         log.error("caught exception: {}".format(e))
 
 def make_app():
    return QtWidgets.QApplication([])
-
-def show_gui(app):
-   widget = Window()
-   widget.resize(800, 600)
-   widget.show()
-   app.exec_()
-
-def run_gui():
-   app = show_app()
-
-   #  sys.exit(app.exec_())
-   return app.exec_()
-
-if __name__ == "__main__":
-   sys.exit(run_gui())

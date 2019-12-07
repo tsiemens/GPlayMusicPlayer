@@ -273,20 +273,27 @@ def main():
    if args.gui:
       from gpmp import gui
 
-      def player_thread():
-         run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
+      player = run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
+      #  def player_thread():
+         #  run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
 
       #  t = threading.Thread(target=player_thread)
       #  t.start()
 
       app = gui.make_app()
-      controller = gui.QtController(app)
+      controller = gui.QtController(app, player)
+
+      def sighandler(signum, frame):
+         if signum == signal.SIGINT:
+            print("sighandler: Ctrl-C")
+            app.quit()
+
+      import signal
+      signal.signal(signal.SIGINT, sighandler)
       app.exec_()
+      signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-      #  gui.show_gui(app)
-
-      t.do_run = False
-      t.join()
+      player.stop_event_handler_thread()
    else:
       from gpmp import cliui
       player = run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
