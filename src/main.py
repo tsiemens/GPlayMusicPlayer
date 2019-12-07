@@ -54,6 +54,11 @@ def get_all_songs_dict(api):
          for song in songs
       }
 
+@dataclass
+class TrackTimingInfo:
+   position_fract: float
+   duration_secs: float
+
 class TrackPlayer:
    def __init__(self, api, hotkey_mgr):
       self.api = api
@@ -90,6 +95,12 @@ class TrackPlayer:
       if self.player:
          return self.player.get_position()
       return 0.0
+
+   def get_timing_info(self):
+      if self.player:
+         return TrackTimingInfo(self.player.get_position(),
+                                self.player.get_length() / 1000)
+      return None
 
    def handle_track_finished(self):
       self.play_next_track()
@@ -259,6 +270,8 @@ def main():
                        help="Play all songs in the library, rather than selecting a playlist")
    parser.add_argument('--gui', action='store_true',
                        help="Run in GUI mode")
+   parser.add_argument('--no-gui', action='store_true',
+                       help="Run in CLI mode")
    args = parser.parse_args()
 
    api = Mobileclient()
@@ -270,15 +283,11 @@ def main():
 
    hotkey_mgr = SystemHotkey()
 
-   if args.gui:
+   if args.gui or not args.no_gui:
       from gpmp import gui
 
       player = run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
-      #  def player_thread():
-         #  run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
-
-      #  t = threading.Thread(target=player_thread)
-      #  t.start()
+      #  player = None
 
       app = gui.make_app()
       controller = gui.QtController(app, player)

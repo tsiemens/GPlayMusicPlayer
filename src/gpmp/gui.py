@@ -6,18 +6,24 @@ from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2.QtWidgets import QSizePolicy
 
 from gpmp.log import get_logger
+from main import TrackTimingInfo
 
 log = get_logger("gui")
 
 import pdb
 
+def secondsToMinuteStr(secs):
+   mins = int(secs / 60)
+   secs = int(secs) % 60
+   return "{}:{:02d}".format(mins, secs)
+
 class Window(QtWidgets.QWidget):
+   progress_bar_max = 500
+
    def __init__(self):
       super().__init__()
+      self.setWindowTitle("gplaymusicplayer")
       self.layout_player()
-
-   def handle_play_pause_button(self):
-      pass
 
    def layout_player(self):
       self.track_info = QtWidgets.QLabel("Unknown - Unknown")
@@ -28,26 +34,32 @@ class Window(QtWidgets.QWidget):
       self.progress_bar.setFormat("")
       self.progress_bar.setMaximumHeight(10)
       self.progress_bar.setMinimum(0)
-      self.progress_bar.setMaximum(100)
+      self.progress_bar.setMaximum(self.progress_bar_max)
       #  self.progress_bar.setSliderPosition(75)
-      self.progress_bar.setValue(75)
+      self.progress_bar.setValue(0)
 
       self.progress_text = QtWidgets.QLabel("1:00")
       self.progress_text.setAlignment(QtCore.Qt.AlignLeft)
 
-      self.play_pause_button = QtWidgets.QPushButton("Play/Pause")
-      self.play_pause_button.setDisabled(True)
       # Despite the policy being "maximum", this shrinks the button to the
       # text size
       sp = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
+
+      self.previous_button = QtWidgets.QPushButton("\u23EE")
+      self.previous_button.setSizePolicy(sp)
+
+      self.play_pause_button = QtWidgets.QPushButton("\u23EF")
       self.play_pause_button.setSizePolicy(sp)
 
-      self.play_pause_button.clicked.connect(self.handle_play_pause_button)
+      self.next_button = QtWidgets.QPushButton("\u23ED")
+      self.next_button.setSizePolicy(sp)
 
       # Layouts:
       self.button_layout = QtWidgets.QHBoxLayout()
       self.button_layout.addWidget(self.progress_text)
+      self.button_layout.addWidget(self.previous_button)
       self.button_layout.addWidget(self.play_pause_button)
+      self.button_layout.addWidget(self.next_button)
 
       self.layout = QtWidgets.QVBoxLayout()
       self.layout.addWidget(self.track_info)
@@ -56,9 +68,24 @@ class Window(QtWidgets.QWidget):
 
       self.setLayout(self.layout)
 
-   def set_progress_percent(self, prog):
+   def update_progress(self, info: TrackTimingInfo):
+      currtime = 0
+      duration_secs = 0
+      if info:
+         self.set_progress_bar_fract(info.position_fract)
+         currtime = info.position_fract * info.duration_secs
+         duration_secs = info.duration_secs
+
+      else:
+         self.set_progress_bar_fract(0)
+
+      self.progress_text.setText("{}/{}".format(
+         secondsToMinuteStr(currtime),
+         secondsToMinuteStr(duration_secs)))
+
+   def set_progress_bar_fract(self, prog):
       try:
-         self.progress_bar.setValue(int(prog))
+         self.progress_bar.setValue(prog * self.progress_bar_max)
       except Exception as e:
          log.error("caught exception: {}".format(e))
 
@@ -147,7 +174,7 @@ class Window(QtWidgets.QWidget):
         #  #  self.signalStatus.emit('Idle.')
 
 class WorkerThread(QtCore.QThread):
-   prog_signal = QtCore.Signal(int)
+   prog_signal = QtCore.Signal(TrackTimingInfo)
    song_info_signal = QtCore.Signal(str)
 
    def __init__(self, player):
@@ -168,7 +195,7 @@ class WorkerThread(QtCore.QThread):
    def send_ui_update_signal(self):
       if self.player is not None:
          prog = min(int(self.player.get_position() * 100), 100)
-         self.prog_signal.emit(prog)
+         self.prog_signal.emit(self.player.get_timing_info())
 
          player_current_song_info = self.player.current_song_info.value
          if player_current_song_info != self.current_song_info:
@@ -200,6 +227,8 @@ class QtController(QtCore.QObject):
 
       self.gui.resize(400, 0)
 
+      self.connect_controls()
+
       # Create a new worker thread.
       self.createWorkerThread()
 
@@ -208,19 +237,27 @@ class QtController(QtCore.QObject):
 
       self.gui.show()
 
+   def connect_controls(self):
+      if self.player:
+         self.gui.play_pause_button.clicked.connect(self.player.toggle_play)
+         self.gui.next_button.clicked.connect(self.player.play_next_track)
+         self.gui.previous_button.clicked.connect(
+               self.player.handle_previous_track_action)
+
    def createWorkerThread(self):
       #  self.worker = WorkerObject()
       #  self.worker_thread = QtCore.QThread()
       #  self.worker.moveToThread(self.worker_thread)
 
-      #  self.worker.prog_signal.connect(self.gui.set_progress_percent)
+      #  self.worker.prog_signal.connect(self.gui.set_progress_bar_fract)
 
       #  self.worker_thread.start()
 
       self.parent().aboutToQuit.connect(self.forceWorkerQuit)
 
       self.custom_worker_thread = WorkerThread(self.player)
-      self.custom_worker_thread.prog_signal.connect(self.gui.set_progress_percent)
+      #  self.custom_worker_thread.prog_signal.connect(self.gui.set_progress_bar_fract)
+      self.custom_worker_thread.prog_signal.connect(self.gui.update_progress)
       self.custom_worker_thread.song_info_signal.connect(self.gui.set_song_info)
       self.custom_worker_thread.start()
 
