@@ -8,13 +8,11 @@ import random
 import sys
 import termios
 from time import sleep
-import tkinter as tk
-from tkinter import N, S, E, W
+import threading
 
 from gmusicapi import Mobileclient
 from setproctitle import setproctitle
 from system_hotkey import SystemHotkey
-import ttk
 import vlc
 
 from gpmp.log import get_logger
@@ -23,57 +21,6 @@ from gpmp.util import enable_echo, pdb
 log = get_logger("main")
 
 oauth_file = Mobileclient.OAUTH_FILEPATH
-
-class Application(tk.Frame):
-   def __init__(self, master=None):
-      super().__init__(master)
-      self.master = master
-      self.master.grid_rowconfigure(0, weight=1)
-      self.master.grid_columnconfigure(0, weight=1)
-      self.grid(row=0, column=0, sticky=N+S+W+E)
-      self.create_widgets()
-
-   def create_widgets(self):
-      self.style = ttk.Style()
-      self.style.theme_use("default")
-
-      self.master.title("GPlayMusicPlayer (Unofficial)")
-      self.grid_columnconfigure(0, weight=1)
-      self.grid_columnconfigure(1, weight=0)
-      self.grid_columnconfigure(2, weight=1)
-      self.grid_rowconfigure(0, weight=1)
-
-      sb = ttk.Scrollbar(self)
-      #  sb.pack(side=tk.RIGHT, fill=tk.Y)
-      sb.grid(row=0, column=1, sticky=tk.W+tk.N+tk.S+tk.E)
-
-      playlist_list = tk.Listbox(self, yscrollcommand=sb.set)
-      for x in range(20):
-         playlist_list.insert(tk.END, str(x))
-         if (x % 2) != 0:
-            playlist_list.itemconfig(x, {'bg':'#eeeeee'})
-
-      #  playlist_list.pack(side=tk.LEFT, fill=tk.BOTH)
-      playlist_list.grid(row=0, column=0, sticky=N+S+W+E, pady=2)
-      sb.config(command=playlist_list.yview)
-
-      tree = ttk.Treeview(self)
-      tree['columns'] = ("name", "nsongs")
-      tree.column("name", width=100)
-      tree.column("nsongs", width=30)
-      tree.heading("#0", text="Line")
-      tree.heading("name", text="Playlists")
-      tree.heading("nsongs", text="#")
-
-      tree.insert("", 0, text="Line1", values=("1A", "1b"))
-      tree.insert("", "end", text="Line2", values=("2A", "2b"))
-      #  tree.pack(side=tk.LEFT, fill=tk.BOTH)
-      tree.grid(row=0, column=2, sticky=tk.W+tk.N+tk.S+tk.E, pady=2)
-
-def buildUI():
-   root = tk.Tk()
-   app = Application(master=root)
-   return app
 
 class MediaPlayer:
    def __init__(self, url):
@@ -288,13 +235,16 @@ class TrackPlayer:
 
    def loop(self):
       time_since_progress_update = 0.0
-      while True:
+      t = threading.currentThread()
+      while getattr(t, "do_run", True):
          sleep(0.1)
          time_since_progress_update += 0.1
          self.do_thread_loop()
          if time_since_progress_update >= 1.0:
             self.update_progress_bar()
             time_since_progress_update = 0.0
+
+      print("MediaPlayer.loop: Thread exited")
 
 def get_user_selected_playlist_tracks(api):
    playlists = api.get_all_user_playlist_contents()
@@ -337,6 +287,8 @@ def main():
    parser = argparse.ArgumentParser()
    parser.add_argument('--all-songs', action='store_true',
                        help="Play all songs in the library, rather than selecting a playlist")
+   parser.add_argument('--gui', action='store_true',
+                       help="Run in GUI mode")
    args = parser.parse_args()
 
    api = Mobileclient()
@@ -348,10 +300,22 @@ def main():
 
    hotkey_mgr = SystemHotkey()
 
-   run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
+   if args.gui:
+      from gpmp import gui
 
-   #  app = buildUI()
-   #  app.mainloop()
+      def player_thread():
+         run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
+
+      t = threading.Thread(target=player_thread)
+      t.start()
+
+      app = gui.make_app()
+      gui.show_gui(app)
+
+      t.do_run = False
+      t.join()
+   else:
+      run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
 
 if __name__ == '__main__':
    main()

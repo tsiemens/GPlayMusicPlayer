@@ -1,4 +1,5 @@
 gmusicapi==12.1.1
+PySide2>=5.13.2
 pyttk==0.3.2
 python-vlc>=3.0.7110
 pynput==1.4.5
