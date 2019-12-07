@@ -6,7 +6,7 @@ from PySide2.QtWidgets import QSizePolicy
 
 import pdb
 
-class MyWidget(QtWidgets.QWidget):
+class Window(QtWidgets.QWidget):
    def __init__(self):
       super().__init__()
       self.layout_player()
@@ -51,7 +51,10 @@ class MyWidget(QtWidgets.QWidget):
       self.setLayout(self.layout)
 
    def set_progress_percent(self, prog):
-      self.progress_bar.setValue(int(prog))
+      try:
+         self.progress_bar.setValue(int(prog))
+      except Exception as e:
+         print("set_progress_percent: Caught exception", e)
 
    def do_test_layout(self):
       self.hello = ["Hallo Welt", "Hei maailma", "Hola Mundo", "Привет мир"] * 20
@@ -113,14 +116,119 @@ class MyWidget(QtWidgets.QWidget):
       index = model.indexFromItem(parent1)
       self.tree.expand(index)
 
-   def magic(self):
-      self.text.setText(random.choice(self.hello))
+#  class WorkerObject(QtCore.QObject):
+
+   #  #  signalStatus = QtCore.pyqtSignal(str)
+   #  prog_signal = QtCore.Signal(int)
+
+   #  def __init__(self, parent=None):
+      #  super(self.__class__, self).__init__(parent)
+
+   #  def startWork(self):
+      #  print("startWork")
+      #  from time import sleep
+      #  for ii in range(100):
+         #  sleep(1.0)
+         #  print("startWork:", ii)
+         #  self.prog_signal.emit(ii)
+            #  #  number = random.randint(0,5000**ii)
+            #  #  self.signalStatus.emit('Iteration: {}, Factoring: {}'.format(ii, number))
+            #  #  factors = self.primeFactors(number)
+            #  #  print('Number: ', number, 'Factors: ', factors)
+        #  #  self.signalStatus.emit('Idle.')
+
+class WorkerThread(QtCore.QThread):
+   prog_signal = QtCore.Signal(int)
+
+   def __init__(self):
+      QtCore.QThread.__init__(self)
+      self.interrupted = False
+      self.self_terminated = False
+
+   def __del__(self):
+      if not self.self_terminated:
+         self.wait()
+
+   def interrupt(self):
+      self.interrupted = True
+
+   def run(self):
+      print("WorkerThread.run")
+      from time import sleep
+      for ii in range(100):
+         if self.interrupted:
+            print("WorkerThread interrupted")
+            break
+         sleep(1.0)
+         print("WorkerThread.run:", ii)
+         self.prog_signal.emit(ii)
+
+      self.terminate()
+      self.self_terminated = True
+
+class QtController(QtCore.QObject):
+   #  signalStatus = QtCore.pyqtSignal(str)
+   worker_start_signal = QtCore.Signal()
+   worker_interrupt_signal = QtCore.Signal()
+
+   def __init__(self, parent=None):
+      super(self.__class__, self).__init__(parent)
+
+      # Create a gui object.
+      self.gui = Window()
+
+      self.gui.resize(800, 600)
+
+      # Create a new worker thread.
+      self.createWorkerThread()
+
+      # Make any cross object connections.
+      #  self._connectSignals()
+
+      self.gui.show()
+
+   def createWorkerThread(self):
+      #  self.worker = WorkerObject()
+      #  self.worker_thread = QtCore.QThread()
+      #  self.worker.moveToThread(self.worker_thread)
+
+      #  self.worker.prog_signal.connect(self.gui.set_progress_percent)
+
+      #  self.worker_thread.start()
+
+      self.parent().aboutToQuit.connect(self.forceWorkerQuit)
+
+      self.custom_worker_thread = WorkerThread()
+      pdb.set_trace()
+      self.custom_worker_thread.prog_signal.connect(self.gui.set_progress_percent)
+      self.custom_worker_thread.start()
+
+
+      # Connect any worker signals
+      #  self.worker.signalStatus.connect(self.gui.updateStatus)
+      #  self.gui.button_start.clicked.connect(self.worker.startWork)
+      self.worker_interrupt_signal.connect(self.custom_worker_thread.interrupt)
+
+   def forceWorkerQuit(self):
+      try:
+         #  if self.worker_thread.isRunning():
+            #  self.worker_thread.terminate()
+            #  self.worker_thread.wait()
+
+         if self.custom_worker_thread.isRunning():
+            self.worker_interrupt_signal.emit()
+            self.custom_worker_thread.wait()
+            #  self.custom_worker_thread.terminate()
+            #  if self.custom_worker_thread.isRunning():
+               #  self.custom_worker_thread.wait()
+      except Exception as e:
+         print("forceWorkerQuit: caught exception:", e)
 
 def make_app():
    return QtWidgets.QApplication([])
 
 def show_gui(app):
-   widget = MyWidget()
+   widget = Window()
    widget.resize(800, 600)
    widget.show()
    app.exec_()

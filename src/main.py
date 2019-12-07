@@ -16,6 +16,7 @@ from system_hotkey import SystemHotkey
 import vlc
 
 from gpmp.log import get_logger
+from gpmp.threading import Atomic
 from gpmp.util import enable_echo, pdb
 
 log = get_logger("main")
@@ -63,13 +64,11 @@ class TrackPlayer:
       # List of track ids
       self.tracks_to_play = []
       self.current_track_index = None
+      self.current_song_info = Atomic(None)
 
       self.player = None
-      self.progress_bar = None
       self.pending_events = []
-
-   def __del__(self):
-      self.reset_progress_bar()
+      self.event_handler_thread = None
 
    def setup_hotkeys(self):
       self.hotkey_mgr.register(('control', 'up'),
@@ -80,23 +79,17 @@ class TrackPlayer:
                                callback=lambda _: self.handle_previous_track_action())
       self.hotkey_mgr.register(('control', 'shift', 'right'),
                                callback=lambda _: self.skip_to_end())
-      #  self.hotkey_mgr.register_hotkey(
-            #  "play_pause", (hotkeys.Key.ctrl, hotkeys.Key.up), self.toggle_play)
-      #  self.hotkey_mgr.register_hotkey(
-            #  "next", (hotkeys.Key.ctrl, hotkeys.Key.right), self.play_next_track)
-      #  self.hotkey_mgr.register_hotkey(
-            #  "prev", (hotkeys.Key.ctrl, hotkeys.Key.left),
-            #  self.handle_previous_track_action)
-      #  self.hotkey_mgr.register_hotkey(
-            #  "skip-to-end",
-            #  (hotkeys.Key.shift, hotkeys.Key.ctrl, hotkeys.Key.right),
-            #  self.skip_to_end)
 
    def set_tracks_to_play(self, track_ids):
       self.tracks_to_play = track_ids
 
    def shuffle_tracks(self):
       random.shuffle(self.tracks_to_play)
+
+   def get_position(self):
+      if self.player:
+         return self.player.get_position()
+      return 0.0
 
    def handle_track_finished(self):
       self.play_next_track()
@@ -107,26 +100,7 @@ class TrackPlayer:
          self.pending_events.append(PlayerEvent(str(event.type),
                                                     self.current_track_index))
 
-   def init_progress_bar(self, song_str):
-      from progress.bar import IncrementalBar
-
-      if self.progress_bar is not None:
-         self.progress_bar.finish()
-      self.progress_bar = IncrementalBar(song_str, max=100, suffix='%(percent)d%%')
-      self.progress_bar.goto(0)
-
-   def reset_progress_bar(self):
-      if self.progress_bar is not None:
-         self.progress_bar.finish()
-         self.progress_bar = None
-
-   def update_progress_bar(self):
-      if self.player is not None and self.progress_bar is not None:
-         prog = min(int(self.player.get_position() * 100), 100)
-         self.progress_bar.goto(prog)
-
    def _get_player_for_url(self, url):
-      self.reset_progress_bar()
       if not self.player:
          self.player = MediaPlayer(url)
       else:
@@ -155,8 +129,6 @@ class TrackPlayer:
       return self.player
 
    def play_current_track(self):
-      self.reset_progress_bar()
-
       song_id = self.tracks_to_play[self.current_track_index]
       song_info = self.songs.get(song_id)
       song_str = "Unknown - Unknown"
@@ -165,6 +137,8 @@ class TrackPlayer:
       else:
          log.error("Could not find track info for {}".format(song_id))
 
+      self.current_song_info.value = song_str
+
       url = self.api.get_stream_url(song_id)
       code = self._get_player_for_url(url).play()
       if code != 0:
@@ -172,9 +146,6 @@ class TrackPlayer:
          return False
 
       log.info("Started player: OK")
-      # Quick sleep, to avoid printing the bar over anything printed in the media thread
-      sleep(1.0)
-      self.init_progress_bar(song_str)
       return True
 
    def handle_previous_track_action(self):
@@ -186,9 +157,8 @@ class TrackPlayer:
       if self.current_track_index is None or self.current_track_index <= 0:
          self.current_track_index = 0
       else:
-         self.current_track_index -=1
+         self.current_track_index -= 1
 
-      #  if self.player is not None and self.player.is_playing():
       self.play_current_track()
 
    def play_next_track(self):
@@ -233,18 +203,22 @@ class TrackPlayer:
             log.debug("track finished")
             self.handle_track_finished()
 
-   def loop(self):
-      time_since_progress_update = 0.0
-      t = threading.currentThread()
-      while getattr(t, "do_run", True):
-         sleep(0.1)
-         time_since_progress_update += 0.1
-         self.do_thread_loop()
-         if time_since_progress_update >= 1.0:
-            self.update_progress_bar()
-            time_since_progress_update = 0.0
+   def start_event_handler_thread(self):
+      def player_thread():
+         t = threading.currentThread()
+         while getattr(t, "do_run", True):
+            sleep(0.1)
+            self.do_thread_loop()
 
-      print("MediaPlayer.loop: Thread exited")
+         log.info("MediaPlayer event handler thread exited")
+
+      self.event_handler_thread = threading.Thread(target=player_thread)
+      self.event_handler_thread.start()
+
+   def stop_event_handler_thread(self):
+      if self.event_handler_thread is not None:
+         self.event_handler_thread.do_run = False
+         self.event_handler_thread.join()
 
 def get_user_selected_playlist_tracks(api):
    playlists = api.get_all_user_playlist_contents()
@@ -273,13 +247,9 @@ def run_cli_player(api, hotkey_mgr, play_all_songs=False):
    player.shuffle_tracks()
 
    player.toggle_play()
+   player.start_event_handler_thread()
 
-   try:
-      player.loop()
-   except KeyboardInterrupt:
-      print("\nReceived Ctrl-C")
-      player.reset_progress_bar()
-      exited = True
+   return player
 
 def main():
    setproctitle("gplaymusicplayer")
@@ -306,16 +276,24 @@ def main():
       def player_thread():
          run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
 
-      t = threading.Thread(target=player_thread)
-      t.start()
+      #  t = threading.Thread(target=player_thread)
+      #  t.start()
 
       app = gui.make_app()
-      gui.show_gui(app)
+      controller = gui.QtController(app)
+      app.exec_()
+
+      #  gui.show_gui(app)
 
       t.do_run = False
       t.join()
    else:
-      run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
+      from gpmp import cliui
+      player = run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
+      ui = cliui.CliUI(player)
+      ui.exec_()
+
+      player.stop_event_handler_thread()
 
 if __name__ == '__main__':
    main()
