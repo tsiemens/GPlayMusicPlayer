@@ -3,7 +3,7 @@ from time import sleep
 
 from progress.bar import IncrementalBar
 
-from main import TrackPlayer
+from gpmp.player import TrackPlayer
 
 class CliUI:
    def __init__(self, player: TrackPlayer):

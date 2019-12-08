@@ -6,7 +6,7 @@ from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2.QtWidgets import QSizePolicy
 
 from gpmp.log import get_logger
-from main import TrackTimingInfo
+from gpmp.player import TrackTimingInfo
 
 log = get_logger("gui")
 
@@ -26,20 +26,29 @@ class Window(QtWidgets.QWidget):
       self.layout_player()
 
    def layout_player(self):
+      self.playlist_list = QtWidgets.QListView()
+      self.playlist_list.setAlternatingRowColors(True)
+      self.playlist_list_model = QtGui.QStandardItemModel()
+      self.playlist_list.setModel(self.playlist_list_model)
+
+      self.track_list = QtWidgets.QListView()
+      self.track_list.setAlternatingRowColors(True)
+
       self.track_info = QtWidgets.QLabel("Unknown - Unknown")
       self.track_info.setAlignment(QtCore.Qt.AlignHCenter)
+      sp = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum)
+      self.track_info.setSizePolicy(sp)
 
-      #  self.progress_bar = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
       self.progress_bar = QtWidgets.QProgressBar()
       self.progress_bar.setFormat("")
       self.progress_bar.setMaximumHeight(10)
       self.progress_bar.setMinimum(0)
       self.progress_bar.setMaximum(self.progress_bar_max)
-      #  self.progress_bar.setSliderPosition(75)
-      self.progress_bar.setValue(0)
 
-      self.progress_text = QtWidgets.QLabel("1:00")
+      self.progress_text = QtWidgets.QLabel()
       self.progress_text.setAlignment(QtCore.Qt.AlignLeft)
+
+      self.update_progress(None)
 
       # Despite the policy being "maximum", this shrinks the button to the
       # text size
@@ -61,12 +70,23 @@ class Window(QtWidgets.QWidget):
       self.button_layout.addWidget(self.play_pause_button)
       self.button_layout.addWidget(self.next_button)
 
+      #  self.upper_layout = QtWidgets.QHBoxLayout()
+      self.upper_layout = QtWidgets.QSplitter()
+      self.upper_layout.addWidget(self.playlist_list)
+      self.upper_layout.addWidget(self.track_list)
+      self.upper_layout.setSizes([200, 300])
+
+      #  self.lower_layout = QtWidgets.QVBoxLayout()
+
       self.layout = QtWidgets.QVBoxLayout()
+      self.layout.addWidget(self.upper_layout)
       self.layout.addWidget(self.track_info)
       self.layout.addWidget(self.progress_bar)
       self.layout.addLayout(self.button_layout)
 
       self.setLayout(self.layout)
+
+      self.set_playlist_list_content()
 
    def update_progress(self, info: TrackTimingInfo):
       currtime = 0
@@ -92,6 +112,17 @@ class Window(QtWidgets.QWidget):
    def set_song_info(self, song_info: str):
       if song_info is not None:
          self.track_info.setText(song_info)
+
+   def set_playlist_list_content(self):
+      self.playlist_list_model.clear()
+      item = QtGui.QStandardItem("All Songs")
+      self.playlist_list_model.appendRow(item)
+
+      item = QtGui.QStandardItem("Playlists")
+      item.setFlags(QtCore.Qt.NoItemFlags)
+      self.playlist_list_model.appendRow(item)
+
+      self.playlist_list_model.appendRow(QtGui.QStandardItem("Test2"))
 
    def do_test_layout(self):
       self.hello = ["Hallo Welt", "Hei maailma", "Hola Mundo", "Привет мир"] * 20
@@ -225,7 +256,7 @@ class QtController(QtCore.QObject):
       # Create a gui object.
       self.gui = Window()
 
-      self.gui.resize(400, 0)
+      self.gui.resize(500, 500)
 
       self.connect_controls()
 
