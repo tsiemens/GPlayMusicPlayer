@@ -7,13 +7,12 @@ from gmusicapi import Mobileclient
 from setproctitle import setproctitle
 from system_hotkey import SystemHotkey
 
+from gpmp.auth import authenticate_client
 from gpmp.log import get_logger
 from gpmp.player import TrackPlayer
 from gpmp.util import pdb
 
 log = get_logger("main")
-
-oauth_file = Mobileclient.OAUTH_FILEPATH
 
 def get_user_selected_playlist_tracks(api):
    playlists = api.get_all_user_playlist_contents()
@@ -61,24 +60,21 @@ def main():
    args = parser.parse_args()
 
    api = Mobileclient()
-   if not os.path.exists(oauth_file):
-      api.perform_oauth(oauth_file)
-
-   device_id = Mobileclient.FROM_MAC_ADDRESS
-   api.oauth_login(device_id, oauth_credentials=oauth_file)
-
    hotkey_mgr = SystemHotkey()
 
    if args.gui or not args.no_gui:
       from gpmp import gui
 
-      if args.gui_only_test:
-         player = None
-      else:
-         player = run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
+      player = TrackPlayer(api, hotkey_mgr)
+
+      #  if args.gui_only_test:
+         #  player = None
+      #  else:
+         #  player = run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
 
       app = gui.make_app()
-      controller = gui.QtController(app, player)
+      controller = gui.QtController(app, api, hotkey_mgr, player,
+                                    init_player=not args.gui_only_test)
 
       def sighandler(signum, frame):
          if signum == signal.SIGINT:
@@ -93,6 +89,7 @@ def main():
       if player:
          player.stop_event_handler_thread()
    else:
+      authenticate_client(api)
       from gpmp import cliui
       player = run_cli_player(api, hotkey_mgr, play_all_songs=args.all_songs)
       ui = cliui.CliUI(player)

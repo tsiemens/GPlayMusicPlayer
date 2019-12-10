@@ -50,11 +50,12 @@ class TrackTimingInfo:
 
 class TrackPlayer:
    def __init__(self, api: Mobileclient, hotkey_mgr: SystemHotkey):
+      self.initialized_val = Atomic(False)
       self.api = api
       self.hotkey_mgr = hotkey_mgr
-      self.setup_hotkeys()
-      songs = api.get_all_songs()
-      self.songs = get_all_songs_dict(api)
+      if self.hotkey_mgr:
+         self.setup_hotkeys()
+
       # List of track ids
       self.tracks_to_play = []
       self.current_track_index = None
@@ -63,6 +64,17 @@ class TrackPlayer:
       self.player = None
       self.pending_events = []
       self.event_handler_thread = None
+
+      if api.is_authenticated():
+         self.initialize()
+
+   @property
+   def initialized(self):
+      self.initialized_val.value
+
+   def initialize(self):
+      self.songs = get_all_songs_dict(self.api)
+      self.initialized_val.value = True
 
    def setup_hotkeys(self):
       self.hotkey_mgr.register(('control', 'up'),
@@ -219,3 +231,21 @@ class TrackPlayer:
       if self.event_handler_thread is not None:
          self.event_handler_thread.do_run = False
          self.event_handler_thread.join()
+
+class Library:
+   def __init__(self, api: Mobileclient):
+      self.api = api
+      self.songs = None
+      self.playlist_meta = None
+      self.playlist_contents = None
+
+   def load_core(self):
+      #  self.songs = get_all_songs_dict(api)
+      # list
+      self.playlist_meta = [p for p in self.api.get_all_playlists()
+                            if not p['deleted']]
+      self.playlist_meta = sorted(self.playlist_meta,
+                                  key=lambda p: p['name'])
+
+   def load_playlist_contents(self):
+      self.playlist_contents = self.api.get_all_user_playlist_contents()

@@ -2,11 +2,15 @@
 import sys
 import random
 from time import sleep
+
+from gmusicapi import Mobileclient
 from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2.QtWidgets import QSizePolicy
 
+from gpmp.auth import authenticate_client
 from gpmp.log import get_logger
-from gpmp.player import TrackTimingInfo
+from gpmp.player import Library, TrackTimingInfo, TrackPlayer
+from gpmp.threading import Atomic
 
 log = get_logger("gui")
 
@@ -63,6 +67,10 @@ class Window(QtWidgets.QWidget):
       self.next_button = QtWidgets.QPushButton("\u23ED")
       self.next_button.setSizePolicy(sp)
 
+      self.loading_text = QtWidgets.QLabel()
+      self.loading_text.setAlignment(QtCore.Qt.AlignLeft)
+      self.loading_text.setSizePolicy(sp)
+
       # Layouts:
       self.button_layout = QtWidgets.QHBoxLayout()
       self.button_layout.addWidget(self.progress_text)
@@ -70,23 +78,25 @@ class Window(QtWidgets.QWidget):
       self.button_layout.addWidget(self.play_pause_button)
       self.button_layout.addWidget(self.next_button)
 
-      #  self.upper_layout = QtWidgets.QHBoxLayout()
       self.upper_layout = QtWidgets.QSplitter()
       self.upper_layout.addWidget(self.playlist_list)
       self.upper_layout.addWidget(self.track_list)
       self.upper_layout.setSizes([200, 300])
 
-      #  self.lower_layout = QtWidgets.QVBoxLayout()
+      self.loading_status_layout = QtWidgets.QHBoxLayout()
+      self.loading_status_layout.addWidget(self.loading_text)
+      sp = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
 
       self.layout = QtWidgets.QVBoxLayout()
       self.layout.addWidget(self.upper_layout)
       self.layout.addWidget(self.track_info)
       self.layout.addWidget(self.progress_bar)
       self.layout.addLayout(self.button_layout)
+      self.layout.addLayout(self.loading_status_layout)
 
       self.setLayout(self.layout)
 
-      self.set_playlist_list_content()
+      self.set_playlist_list_content([])
 
    def update_progress(self, info: TrackTimingInfo):
       currtime = 0
@@ -113,7 +123,7 @@ class Window(QtWidgets.QWidget):
       if song_info is not None:
          self.track_info.setText(song_info)
 
-   def set_playlist_list_content(self):
+   def set_playlist_list_content(self, playlists):
       self.playlist_list_model.clear()
       item = QtGui.QStandardItem("All Songs")
       self.playlist_list_model.appendRow(item)
@@ -122,7 +132,16 @@ class Window(QtWidgets.QWidget):
       item.setFlags(QtCore.Qt.NoItemFlags)
       self.playlist_list_model.appendRow(item)
 
-      self.playlist_list_model.appendRow(QtGui.QStandardItem("Test2"))
+      for playlist in playlists:
+         item = QtGui.QStandardItem(playlist['name'])
+         item.setData(playlist)
+         self.playlist_list_model.appendRow(item)
+
+   def set_loading_status(self, loading_status_str):
+      if loading_status_str is None:
+         self.loading_text.setText("")
+      else:
+         self.loading_text.setText(loading_status_str)
 
    def do_test_layout(self):
       self.hello = ["Hallo Welt", "Hei maailma", "Hola Mundo", "Привет мир"] * 20
@@ -183,35 +202,62 @@ class Window(QtWidgets.QWidget):
       index = model.indexFromItem(parent1)
       self.tree.expand(index)
 
-#  class WorkerObject(QtCore.QObject):
+class SharedResources:
+   def __init__(self, api, hotkey_mgr):
+      self.api = api
+      self.hotkey_mgr = hotkey_mgr
+      self.player = Atomic(None)
 
-   #  #  signalStatus = QtCore.pyqtSignal(str)
+class LibraryLoaderWorkerObject(QtCore.QObject):
+
+   #  signalStatus = QtCore.pyqtSignal(str)
    #  prog_signal = QtCore.Signal(int)
+   done_signal = QtCore.Signal()
 
-   #  def __init__(self, parent=None):
-      #  super(self.__class__, self).__init__(parent)
+   def __init__(self, api: Mobileclient, player: TrackPlayer, library: Library,
+                parent=None):
+      super(self.__class__, self).__init__(parent)
+      self.api = api
+      self.player = player
+      self.library = library
 
-   #  def startWork(self):
-      #  print("startWork")
-      #  from time import sleep
-      #  for ii in range(100):
-         #  sleep(1.0)
-         #  print("startWork:", ii)
-         #  self.prog_signal.emit(ii)
-            #  #  number = random.randint(0,5000**ii)
-            #  #  self.signalStatus.emit('Iteration: {}, Factoring: {}'.format(ii, number))
-            #  #  factors = self.primeFactors(number)
-            #  #  print('Number: ', number, 'Factors: ', factors)
-        #  #  self.signalStatus.emit('Idle.')
+   def load_library(self):
+      print("load_library")
 
-class WorkerThread(QtCore.QThread):
+      try:
+         #  for i in range(100):
+            #  sleep(1)
+            #  print("loop", i)
+         #  pdb.set_trace()
+         #  player = TrackPlayer(self.sr.api, self.sr.hotkey_mgr)
+         self.player.initialize()
+
+         #  if play_all_songs:
+         trackIds = list(self.player.songs.keys())
+         #  else:
+            #  trackIds = get_user_selected_playlist_tracks(api)
+
+         self.player.set_tracks_to_play(trackIds)
+         self.player.shuffle_tracks()
+
+         self.player.toggle_play()
+         self.player.start_event_handler_thread()
+
+         self.library.load_core()
+
+         print("load_library done")
+         self.done_signal.emit()
+      except Exception as e:
+         print("load_library caught exception", e)
+
+class PlayerStateMonitorThread(QtCore.QThread):
    prog_signal = QtCore.Signal(TrackTimingInfo)
    song_info_signal = QtCore.Signal(str)
 
-   def __init__(self, player):
+   def __init__(self, player: TrackPlayer):
       QtCore.QThread.__init__(self)
-      self.player = player
 
+      self.player = player
       self.current_song_info = None
       self.interrupted = False
       self.self_terminated = False
@@ -246,12 +292,25 @@ class WorkerThread(QtCore.QThread):
 class QtController(QtCore.QObject):
    #  signalStatus = QtCore.pyqtSignal(str)
    worker_start_signal = QtCore.Signal()
+   load_player_start_signal = QtCore.Signal()
+
    worker_interrupt_signal = QtCore.Signal()
 
-   def __init__(self, parent, player):
+   def __init__(self, parent, api, hotkey_mgr, player, init_player=True):
       super(self.__class__, self).__init__(parent)
 
+      #  self.sr = SharedResources(api, hotkey_mgr)
+
+      self.api = api
+      self.hotkey_mgr = hotkey_mgr
       self.player = player
+      #  self.sr.player.value = player
+      self.init_player = init_player
+
+      self.library = Library(self.api)
+
+      if not self.api.is_authenticated() and self.init_player:
+         authenticate_client(self.api)
 
       # Create a gui object.
       self.gui = Window()
@@ -261,7 +320,7 @@ class QtController(QtCore.QObject):
       self.connect_controls()
 
       # Create a new worker thread.
-      self.createWorkerThread()
+      self.createWorkerThreads()
 
       # Make any cross object connections.
       #  self._connectSignals()
@@ -275,23 +334,28 @@ class QtController(QtCore.QObject):
          self.gui.previous_button.clicked.connect(
                self.player.handle_previous_track_action)
 
-   def createWorkerThread(self):
-      #  self.worker = WorkerObject()
-      #  self.worker_thread = QtCore.QThread()
-      #  self.worker.moveToThread(self.worker_thread)
-
-      #  self.worker.prog_signal.connect(self.gui.set_progress_bar_fract)
-
-      #  self.worker_thread.start()
-
+   def createWorkerThreads(self):
       self.parent().aboutToQuit.connect(self.forceWorkerQuit)
 
-      self.custom_worker_thread = WorkerThread(self.player)
+      self.loader_worker = LibraryLoaderWorkerObject(self.api, self.player,
+                                                     self.library)
+      self.worker_thread = QtCore.QThread()
+      self.loader_worker.moveToThread(self.worker_thread)
+      self.loader_worker.done_signal.connect(self.handle_player_loaded)
+      self.load_player_start_signal.connect(self.loader_worker.load_library)
+      self.worker_thread.start()
+
+      if self.init_player:
+         self.gui.set_loading_status("Loading library...")
+         self.load_player_start_signal.emit()
+      #  pdb.set_trace()
+      #  self.loader_worker.load_library()
+
+      self.custom_worker_thread = PlayerStateMonitorThread(self.player)
       #  self.custom_worker_thread.prog_signal.connect(self.gui.set_progress_bar_fract)
       self.custom_worker_thread.prog_signal.connect(self.gui.update_progress)
       self.custom_worker_thread.song_info_signal.connect(self.gui.set_song_info)
       self.custom_worker_thread.start()
-
 
       # Connect any worker signals
       #  self.worker.signalStatus.connect(self.gui.updateStatus)
@@ -300,9 +364,10 @@ class QtController(QtCore.QObject):
 
    def forceWorkerQuit(self):
       try:
-         #  if self.worker_thread.isRunning():
-            #  self.worker_thread.terminate()
-            #  self.worker_thread.wait()
+         if self.worker_thread.isRunning():
+            # Gracefully quit, once the thread reaches the event loop
+            self.worker_thread.quit()
+            self.worker_thread.wait()
 
          if self.custom_worker_thread.isRunning():
             self.worker_interrupt_signal.emit()
@@ -312,6 +377,11 @@ class QtController(QtCore.QObject):
                #  self.custom_worker_thread.wait()
       except Exception as e:
          log.error("caught exception: {}".format(e))
+
+   def handle_player_loaded(self):
+      self.gui.set_loading_status(None)
+      self.connect_controls()
+      self.gui.set_playlist_list_content(self.library.playlist_meta)
 
 def make_app():
    return QtWidgets.QApplication([])
