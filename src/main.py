@@ -41,7 +41,6 @@ def run_cli_player(api, hotkey_mgr, play_all_songs=False):
    player.shuffle_tracks()
 
    player.toggle_play()
-   player.start_event_handler_thread()
 
    return player
 

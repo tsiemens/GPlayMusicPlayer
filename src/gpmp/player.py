@@ -74,6 +74,7 @@ class TrackPlayer:
 
    def initialize(self):
       self.songs = get_all_songs_dict(self.api)
+      self.start_event_handler_thread()
       self.initialized_val.value = True
 
    def setup_hotkeys(self):
@@ -88,6 +89,9 @@ class TrackPlayer:
 
    def set_tracks_to_play(self, track_ids):
       self.tracks_to_play = track_ids
+      self.current_track_index = None
+      if self.player and self.player.is_playing():
+         self.player.stop()
 
    def shuffle_tracks(self):
       random.shuffle(self.tracks_to_play)

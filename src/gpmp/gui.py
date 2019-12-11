@@ -24,6 +24,8 @@ def secondsToMinuteStr(secs):
 class Window(QtWidgets.QWidget):
    progress_bar_max = 500
 
+   AllSongsItem = object()
+
    def __init__(self):
       super().__init__()
       self.setWindowTitle("gplaymusicplayer")
@@ -34,6 +36,8 @@ class Window(QtWidgets.QWidget):
       self.playlist_list.setAlternatingRowColors(True)
       self.playlist_list_model = QtGui.QStandardItemModel()
       self.playlist_list.setModel(self.playlist_list_model)
+      self.playlist_list.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
 
       self.track_list = QtWidgets.QListView()
       self.track_list.setAlternatingRowColors(True)
@@ -126,6 +130,7 @@ class Window(QtWidgets.QWidget):
    def set_playlist_list_content(self, playlists):
       self.playlist_list_model.clear()
       item = QtGui.QStandardItem("All Songs")
+      item.setData(Window.AllSongsItem)
       self.playlist_list_model.appendRow(item)
 
       item = QtGui.QStandardItem("Playlists")
@@ -142,38 +147,6 @@ class Window(QtWidgets.QWidget):
          self.loading_text.setText("")
       else:
          self.loading_text.setText(loading_status_str)
-
-   def do_test_layout(self):
-      self.hello = ["Hallo Welt", "Hei maailma", "Hola Mundo", "Привет мир"] * 20
-
-      #  self.button = QtWidgets.QPushButton("Click me!")
-      #  self.text = QtWidgets.QLabel("Hello World")
-      #  self.text.setAlignment(QtCore.Qt.AlignCenter)
-      self.list = QtWidgets.QListView()
-
-      model = QtGui.QStandardItemModel()
-      for f in self.hello:
-          model.appendRow(QtGui.QStandardItem(f))
-      self.list.setModel(model)
-
-      sp = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-      sp.setHorizontalStretch(1)
-      self.list.setSizePolicy(sp)
-
-      self.tree = QtWidgets.QTreeView()
-      self.pop_tree()
-      sp = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-      sp.setHorizontalStretch(2)
-      self.tree.setSizePolicy(sp)
-
-      self.layout = QtWidgets.QHBoxLayout()
-      self.layout.addWidget(self.list)
-      self.layout.addWidget(self.tree)
-      #  self.layout.addWidget(self.text)
-      #  self.layout.addWidget(self.button)
-      self.setLayout(self.layout)
-
-      #  self.button.clicked.connect(self.magic)
 
    def pop_tree(self):
       self.tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -212,7 +185,8 @@ class LibraryLoaderWorkerObject(QtCore.QObject):
 
    #  signalStatus = QtCore.pyqtSignal(str)
    #  prog_signal = QtCore.Signal(int)
-   done_signal = QtCore.Signal()
+   load_library_done_signal = QtCore.Signal()
+   load_playlists_done_signal = QtCore.Signal()
 
    def __init__(self, api: Mobileclient, player: TrackPlayer, library: Library,
                 parent=None):
@@ -222,33 +196,28 @@ class LibraryLoaderWorkerObject(QtCore.QObject):
       self.library = library
 
    def load_library(self):
-      print("load_library")
-
+      log.debug("")
       try:
-         #  for i in range(100):
-            #  sleep(1)
-            #  print("loop", i)
-         #  pdb.set_trace()
-         #  player = TrackPlayer(self.sr.api, self.sr.hotkey_mgr)
          self.player.initialize()
-
-         #  if play_all_songs:
-         trackIds = list(self.player.songs.keys())
-         #  else:
-            #  trackIds = get_user_selected_playlist_tracks(api)
-
-         self.player.set_tracks_to_play(trackIds)
-         self.player.shuffle_tracks()
-
-         self.player.toggle_play()
-         self.player.start_event_handler_thread()
 
          self.library.load_core()
 
-         print("load_library done")
-         self.done_signal.emit()
+         log.debug("done")
+         self.load_library_done_signal.emit()
       except Exception as e:
          print("load_library caught exception", e)
+         log.error("caught exception: {}".format(e))
+
+   def load_playlist_contents(self):
+      log.debug("")
+      try:
+         self.library.load_playlist_contents()
+
+         log.debug("done")
+         self.load_playlists_done_signal.emit()
+      except Exception as e:
+         print("load_playlist_contents caught exception", e)
+         log.error("caught exception: {}".format(e))
 
 class PlayerStateMonitorThread(QtCore.QThread):
    prog_signal = QtCore.Signal(TrackTimingInfo)
@@ -293,6 +262,7 @@ class QtController(QtCore.QObject):
    #  signalStatus = QtCore.pyqtSignal(str)
    worker_start_signal = QtCore.Signal()
    load_player_start_signal = QtCore.Signal()
+   load_playlists_start_signal = QtCore.Signal()
 
    worker_interrupt_signal = QtCore.Signal()
 
@@ -308,6 +278,8 @@ class QtController(QtCore.QObject):
       self.init_player = init_player
 
       self.library = Library(self.api)
+
+      self.pending_playlist_action = None
 
       if not self.api.is_authenticated() and self.init_player:
          authenticate_client(self.api)
@@ -334,6 +306,8 @@ class QtController(QtCore.QObject):
          self.gui.previous_button.clicked.connect(
                self.player.handle_previous_track_action)
 
+      self.gui.playlist_list.doubleClicked.connect(self.handle_playlist_item_click)
+
    def createWorkerThreads(self):
       self.parent().aboutToQuit.connect(self.forceWorkerQuit)
 
@@ -341,8 +315,12 @@ class QtController(QtCore.QObject):
                                                      self.library)
       self.worker_thread = QtCore.QThread()
       self.loader_worker.moveToThread(self.worker_thread)
-      self.loader_worker.done_signal.connect(self.handle_player_loaded)
+      self.loader_worker.load_library_done_signal.connect(self.handle_player_loaded)
+      self.loader_worker.load_playlists_done_signal.connect(
+            self.handle_playlists_loaded)
       self.load_player_start_signal.connect(self.loader_worker.load_library)
+      self.load_playlists_start_signal.connect(
+            self.loader_worker.load_playlist_contents)
       self.worker_thread.start()
 
       if self.init_player:
@@ -378,10 +356,61 @@ class QtController(QtCore.QObject):
       except Exception as e:
          log.error("caught exception: {}".format(e))
 
+   def load_playlists_and_do(self, action):
+      if self.library.playlist_contents:
+         action()
+      else:
+         self.gui.set_loading_status("Loading playlists...")
+         self.pending_playlist_action = action
+         self.load_playlists_start_signal.emit()
+
    def handle_player_loaded(self):
       self.gui.set_loading_status(None)
-      self.connect_controls()
       self.gui.set_playlist_list_content(self.library.playlist_meta)
+
+   def handle_playlists_loaded(self):
+      self.gui.set_loading_status(None)
+      if self.pending_playlist_action:
+         self.pending_playlist_action()
+         self.pending_playlist_action = None
+
+   def handle_playlist_item_click(self, qindex):
+      data = self.gui.playlist_list_model.item(qindex.row()).data()
+      log.debug("handle_playlist_item_click: {}, data: {}".format(qindex, data))
+      if data is Window.AllSongsItem:
+         self.play_all_songs()
+      elif data is not None:
+         _id = data['id']
+         self.load_playlists_and_do(lambda: self.play_playlist(_id))
+
+   # ********************************************************************************
+   # Player operations
+   # ********************************************************************************
+
+   def play_all_songs(self):
+      log.debug("")
+      trackIds = list(self.player.songs.keys())
+
+      self.player.set_tracks_to_play(trackIds)
+      self.player.shuffle_tracks()
+      self.player.play_next_track()
+
+   def play_playlist(self, playlist_id):
+      log.debug(playlist_id)
+      playlist = None
+      for pl in self.library.playlist_contents:
+         if pl['id'] == playlist_id:
+            playlist = pl
+            break
+      if playlist is None:
+         log.error("Unable to find playlist {}".format(playlist_id))
+         return
+
+      trackIds = [t['trackId'] for t in playlist['tracks']]
+
+      self.player.set_tracks_to_play(trackIds)
+      self.player.shuffle_tracks()
+      self.player.play_next_track()
 
 def make_app():
    return QtWidgets.QApplication([])
