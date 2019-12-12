@@ -1,1 +1,20 @@
-src/main.py
+#!/usr/bin/env bash
+
+# Get real directory of project
+source="${BASH_SOURCE[0]}"
+while [ -h "$source" ]; do # resolve $source until the file is no longer a symlink
+  dir="$( cd -P "$( dirname "$source" )" >/dev/null 2>&1 && pwd )"
+  source="$(readlink "$source")"
+  # if $source was a relative symlink, we need to resolve it relative to the
+  # path where the symlink file was located
+  [[ $source != /* ]] && source="$dir/$source"
+done
+dir="$( cd -P "$( dirname "$source" )" >/dev/null 2>&1 && pwd )"
+
+if [ -d "$dir/venv" ]; then
+   source $dir/venv/bin/activate
+   python3 $dir/src/main.py
+else
+   echo $dir has not been set up.
+   exit 1
+fi

@@ -1,6 +1,6 @@
 # Development
+1. Install VLC on your machine
+2. Setup project and dependencies
 ```
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+./setup.sh
 ```
