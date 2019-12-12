@@ -1,8 +1,8 @@
-
 import sys
 import random
 from time import sleep
 
+import qdarkstyle
 from gmusicapi import Mobileclient
 from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2.QtWidgets import QSizePolicy
@@ -21,14 +21,92 @@ def secondsToMinuteStr(secs):
    secs = int(secs) % 60
    return "{}:{:02d}".format(mins, secs)
 
-class Window(QtWidgets.QWidget):
+class Settings:
+   def __init__(self):
+      self.settings = QtCore.QSettings("gplaymusicplayer")
+
+   def setTheme(self, theme):
+      self.settings.setValue("theme", theme)
+
+   def getTheme(self):
+      return self.settings.value("theme", "light")
+
+class Window(QtWidgets.QMainWindow):
+   key_pressed_signal = QtCore.Signal(QtGui.QKeyEvent)
+   theme_changed_signal = QtCore.Signal(str)
+
+   def __init__(self, theme):
+      super().__init__()
+      self.setWindowTitle("gplaymusicplayer")
+      self.settings = Settings()
+      self.theme_actions = {}
+      self.widget = WindowContent()
+      self.setCentralWidget(self.widget)
+      self.layout_menu()
+      self.set_checked_theme(theme)
+
+   def layout_menu(self):
+      mb = self.menuBar()
+      #  mb.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+      mb.setHidden(True)
+
+      #  self.themeAct = QtWidgets.QAction("Theme")
+
+      editMenu = mb.addMenu("&Edit")
+      themeMenu = editMenu.addMenu("Theme")
+
+      self.themeActGrp = QtWidgets.QActionGroup(themeMenu)
+      self.themeActGrp.setExclusive(True)
+
+      def _addTheme(attrName, name):
+         nonlocal themeMenu
+         action = QtWidgets.QAction(name)
+         self.theme_actions[attrName] = action
+         action.setCheckable(True)
+         action.triggered.connect(self.on_theme_action_triggered)
+         self.themeActGrp.addAction(action)
+         themeMenu.addAction(action)
+
+      _addTheme("light", "Light")
+      _addTheme("dark", "Dark")
+
+   # Overrides
+   def keyPressEvent(self, event):
+      super(Window, self).keyPressEvent(event)
+      self.key_pressed_signal.emit(event)
+
+   def toggle_window_hidden(self):
+      mb = self.menuBar()
+      hidden = mb.isHidden()
+      # Toggle menu visibility
+      mb.setHidden(not hidden)
+      hidden = not hidden
+      if hidden:
+         mb.clearFocus()
+      else:
+         mb.setFocus()
+
+   def set_checked_theme(self, theme):
+      if theme not in self.theme_actions:
+         return
+
+      for theme_, theme_act in self.theme_actions.items():
+         theme_act.setChecked(theme == theme_)
+
+   def on_theme_action_triggered(self):
+      for theme, theme_act in self.theme_actions.items():
+         if theme_act.isChecked():
+            self.theme_changed_signal.emit(theme)
+            #  self.set_theme(theme)
+            return
+
+class WindowContent(QtWidgets.QWidget):
    progress_bar_max = 500
 
    AllSongsItem = object()
 
    def __init__(self):
       super().__init__()
-      self.setWindowTitle("gplaymusicplayer")
       self.layout_player()
 
    def layout_player(self):
@@ -62,14 +140,19 @@ class Window(QtWidgets.QWidget):
       # text size
       sp = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
 
+      button_stylesheet = ("padding-left: 15px; padding-right: 15px; "
+                           "padding-top: 4px; padding-bottom: 4px;")
       self.previous_button = QtWidgets.QPushButton("\u23EE")
       self.previous_button.setSizePolicy(sp)
+      self.previous_button.setStyleSheet(button_stylesheet)
 
       self.play_pause_button = QtWidgets.QPushButton("\u23EF")
       self.play_pause_button.setSizePolicy(sp)
+      self.play_pause_button.setStyleSheet(button_stylesheet)
 
       self.next_button = QtWidgets.QPushButton("\u23ED")
       self.next_button.setSizePolicy(sp)
+      self.next_button.setStyleSheet(button_stylesheet)
 
       self.loading_text = QtWidgets.QLabel()
       self.loading_text.setAlignment(QtCore.Qt.AlignLeft)
@@ -130,7 +213,7 @@ class Window(QtWidgets.QWidget):
    def set_playlist_list_content(self, playlists):
       self.playlist_list_model.clear()
       item = QtGui.QStandardItem("All Songs")
-      item.setData(Window.AllSongsItem)
+      item.setData(WindowContent.AllSongsItem)
       self.playlist_list_model.appendRow(item)
 
       item = QtGui.QStandardItem("Playlists")
@@ -266,10 +349,11 @@ class QtController(QtCore.QObject):
 
    worker_interrupt_signal = QtCore.Signal()
 
-   def __init__(self, parent, api, hotkey_mgr, player, init_player=True):
-      super(self.__class__, self).__init__(parent)
+   def __init__(self, qapp, api, hotkey_mgr, player, init_player=True):
+      # Note qapp is being used as the parent attribute in the super
+      super(self.__class__, self).__init__(qapp)
 
-      #  self.sr = SharedResources(api, hotkey_mgr)
+      self.settings = Settings()
 
       self.api = api
       self.hotkey_mgr = hotkey_mgr
@@ -285,9 +369,11 @@ class QtController(QtCore.QObject):
          authenticate_client(self.api)
 
       # Create a gui object.
-      self.gui = Window()
+      self.window = Window(self.settings.getTheme())
+      self.gui = self.window.widget
+      self.window.resize(500, 500)
 
-      self.gui.resize(500, 500)
+      self.set_theme(self.settings.getTheme())
 
       self.connect_controls()
 
@@ -297,7 +383,11 @@ class QtController(QtCore.QObject):
       # Make any cross object connections.
       #  self._connectSignals()
 
-      self.gui.show()
+      self.window.show()
+
+   @property
+   def app(self):
+      return self.parent()
 
    def connect_controls(self):
       if self.player:
@@ -307,6 +397,9 @@ class QtController(QtCore.QObject):
                self.player.handle_previous_track_action)
 
       self.gui.playlist_list.doubleClicked.connect(self.handle_playlist_item_click)
+
+      self.window.theme_changed_signal.connect(self.set_theme)
+      self.window.key_pressed_signal.connect(self.on_window_key_press)
 
    def createWorkerThreads(self):
       self.parent().aboutToQuit.connect(self.forceWorkerQuit)
@@ -377,11 +470,23 @@ class QtController(QtCore.QObject):
    def handle_playlist_item_click(self, qindex):
       data = self.gui.playlist_list_model.item(qindex.row()).data()
       log.debug("handle_playlist_item_click: {}, data: {}".format(qindex, data))
-      if data is Window.AllSongsItem:
+      if data is WindowContent.AllSongsItem:
          self.play_all_songs()
       elif data is not None:
          _id = data['id']
          self.load_playlists_and_do(lambda: self.play_playlist(_id))
+
+   def set_theme(self, theme):
+      if theme == "dark":
+         self.app.setStyleSheet(qdarkstyle.load_stylesheet_pyside2())
+      else:
+         self.app.setStyleSheet("")
+
+      self.settings.setTheme(theme)
+
+   def on_window_key_press(self, event):
+      if event.key() == QtCore.Qt.Key_Alt:
+         self.window.toggle_window_hidden()
 
    # ********************************************************************************
    # Player operations
