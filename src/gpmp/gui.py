@@ -12,7 +12,7 @@ from gpmp.log import get_logger
 from gpmp.player import Library, TrackTimingInfo, TrackPlayer
 from gpmp.threading import Atomic
 
-log = get_logger("gui")
+log = get_logger()
 
 import pdb
 

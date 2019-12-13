@@ -2,6 +2,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 import tempfile
+import traceback
 
 #  _format = '%(asctime)s %(levelname)s %(funcName)s(%(lineno)d) %(message)s'
 _format = '%(asctime)s %(name)s:%(levelname)s %(funcName)s: %(message)s'
@@ -50,6 +51,11 @@ _log_logger.setLevel(logging.INFO)
 _log_logger.addHandler(_handler)
 
 def get_logger(name=None):
+   if name is None:
+      stack = traceback.extract_stack()
+      # Get the filename without py extension of the caller
+      name = os.path.split(stack[-2].filename)[1].split('.')[0]
+
    log = logging.getLogger(name)
    level = _logging_levels.get(name, logging.WARNING)
    _log_logger.info("{}/{}".format(name, level_to_level_abrev[level]))

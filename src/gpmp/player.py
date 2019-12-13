@@ -10,7 +10,7 @@ import vlc
 from gpmp.log import get_logger
 from gpmp.threading import Atomic
 
-log = get_logger("player")
+log = get_logger()
 
 class Library:
    def __init__(self, api: Mobileclient):

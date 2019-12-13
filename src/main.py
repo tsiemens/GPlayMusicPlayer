@@ -12,7 +12,7 @@ from gpmp.log import get_logger
 from gpmp.player import Library, TrackPlayer
 from gpmp.util import pdb
 
-log = get_logger("main")
+log = get_logger()
 
 def main():
    setproctitle("gplaymusicplayer")
