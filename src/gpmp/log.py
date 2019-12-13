@@ -49,7 +49,7 @@ _log_logger = logging.getLogger("log")
 _log_logger.setLevel(logging.INFO)
 _log_logger.addHandler(_handler)
 
-def get_logger(name):
+def get_logger(name=None):
    log = logging.getLogger(name)
    level = _logging_levels.get(name, logging.WARNING)
    _log_logger.info("{}/{}".format(name, level_to_level_abrev[level]))

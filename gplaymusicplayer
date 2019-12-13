@@ -13,7 +13,7 @@ dir="$( cd -P "$( dirname "$source" )" >/dev/null 2>&1 && pwd )"
 
 if [ -d "$dir/venv" ]; then
    source $dir/venv/bin/activate
-   python3 $dir/src/main.py
+   python3 $dir/src/main.py $@
 else
    echo $dir has not been set up.
    exit 1

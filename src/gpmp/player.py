@@ -12,6 +12,33 @@ from gpmp.threading import Atomic
 
 log = get_logger("player")
 
+class Library:
+   def __init__(self, api: Mobileclient):
+      self.api = api
+      self.songs = None
+      self.playlist_meta = None
+      self.playlist_contents = None
+
+   def load_core(self):
+      self.songs = self._get_all_songs_dict()
+      self.playlist_meta = [p for p in self.api.get_all_playlists()
+                            if not p['deleted']]
+      self.playlist_meta = sorted(self.playlist_meta,
+                                  key=lambda p: p['name'])
+
+   def load_playlist_contents(self):
+      self.playlist_contents = self.api.get_all_user_playlist_contents()
+
+   def _get_all_songs_dict(self):
+      songs = self.api.get_all_songs()
+      return {
+            song['id']: {
+                  'artist': song.get('artist'),
+                  'title': song.get('title'),
+               }
+            for song in songs
+         }
+
 class MediaPlayer:
    def __init__(self, url):
       self.player = vlc.MediaPlayer(url)
@@ -33,26 +60,17 @@ class PlayerEvent:
    event_str: str
    track_index: int
 
-def get_all_songs_dict(api):
-   songs = api.get_all_songs()
-   return {
-         song['id']: {
-               'artist': song.get('artist'),
-               'title': song.get('title'),
-            }
-         for song in songs
-      }
-
 @dataclass
 class TrackTimingInfo:
    position_fract: float
    duration_secs: float
 
 class TrackPlayer:
-   def __init__(self, api: Mobileclient, hotkey_mgr: SystemHotkey):
+   def __init__(self, api: Mobileclient, hotkey_mgr: SystemHotkey, library: Library):
       self.initialized_val = Atomic(False)
       self.api = api
       self.hotkey_mgr = hotkey_mgr
+      self.library = library
       if self.hotkey_mgr:
          self.setup_hotkeys()
 
@@ -73,7 +91,8 @@ class TrackPlayer:
       self.initialized_val.value
 
    def initialize(self):
-      self.songs = get_all_songs_dict(self.api)
+      if self.library.songs is None:
+         self.library.load_core()
       self.start_event_handler_thread()
       self.initialized_val.value = True
 
@@ -146,7 +165,7 @@ class TrackPlayer:
 
    def play_current_track(self):
       song_id = self.tracks_to_play[self.current_track_index]
-      song_info = self.songs.get(song_id)
+      song_info = self.library.songs.get(song_id)
       song_str = "Unknown - Unknown"
       if song_info:
          song_str = "{0} - {1}".format(song_info['title'], song_info['artist'])
@@ -235,21 +254,3 @@ class TrackPlayer:
       if self.event_handler_thread is not None:
          self.event_handler_thread.do_run = False
          self.event_handler_thread.join()
-
-class Library:
-   def __init__(self, api: Mobileclient):
-      self.api = api
-      self.songs = None
-      self.playlist_meta = None
-      self.playlist_contents = None
-
-   def load_core(self):
-      #  self.songs = get_all_songs_dict(api)
-      # list
-      self.playlist_meta = [p for p in self.api.get_all_playlists()
-                            if not p['deleted']]
-      self.playlist_meta = sorted(self.playlist_meta,
-                                  key=lambda p: p['name'])
-
-   def load_playlist_contents(self):
-      self.playlist_contents = self.api.get_all_user_playlist_contents()

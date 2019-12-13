@@ -1,18 +1,50 @@
 import threading
 from time import sleep
 
+from gmusicapi import Mobileclient
 from progress.bar import IncrementalBar
 
-from gpmp.player import TrackPlayer
+from gpmp.player import TrackPlayer, Library
 
 class CliUI:
-   def __init__(self, player: TrackPlayer):
+   def __init__(self, player: TrackPlayer, api: Mobileclient,
+                play_all_songs=False):
       self.player = player
+      self.api = api
+      self.library = self.player.library
+      self.play_all_songs = play_all_songs
       self.progress_bar = None
       self.current_song_info = None
 
-   def init_progress_bar(self, song_str):
+   def get_user_selected_playlist_tracks(self):
+      self.library.load_playlist_contents()
+      playlists = self.library.playlist_contents
+      for i, playlist in enumerate(playlists):
+         print("[{0}]: {1}".format(i, playlist['name']))
 
+      index = int(input("\nSelect a playlist. "))
+      if index >= len(playlists):
+         print("No playlist at that index.")
+         return None
+
+      playlist = playlists[index]
+      del playlists
+
+      return [t['trackId'] for t in playlist['tracks']]
+
+   def run_player(self):
+      self.player.initialize()
+      if self.play_all_songs:
+         trackIds = list(self.library.songs.keys())
+      else:
+         trackIds = self.get_user_selected_playlist_tracks()
+
+      self.player.set_tracks_to_play(trackIds)
+      self.player.shuffle_tracks()
+
+      self.player.toggle_play()
+
+   def init_progress_bar(self, song_str):
       if self.progress_bar is not None:
          self.progress_bar.finish()
       self.progress_bar = IncrementalBar(song_str, max=100, suffix='%(percent)d%%')
@@ -53,6 +85,7 @@ class CliUI:
 
    def exec_(self):
       """Runs the UI thread loop"""
+      self.run_player()
       try:
          self.run_loop()
       except KeyboardInterrupt:

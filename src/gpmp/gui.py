@@ -361,7 +361,7 @@ class QtController(QtCore.QObject):
       #  self.sr.player.value = player
       self.init_player = init_player
 
-      self.library = Library(self.api)
+      self.library = self.player.library
 
       self.pending_playlist_action = None
 
@@ -494,7 +494,7 @@ class QtController(QtCore.QObject):
 
    def play_all_songs(self):
       log.debug("")
-      trackIds = list(self.player.songs.keys())
+      trackIds = list(self.library.songs.keys())
 
       self.player.set_tracks_to_play(trackIds)
       self.player.shuffle_tracks()
