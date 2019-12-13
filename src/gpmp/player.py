@@ -211,6 +211,11 @@ class TrackPlayer:
 
       self.play_current_track()
 
+   def play_track_at_index(self, index):
+      log.info(index)
+      self.current_track_index.value = index
+      return self.play_current_track()
+
    def play_next_track(self):
       current_track_index = self.current_track_index.value
       log.info("current_track_index {}".format(current_track_index))
@@ -218,13 +223,12 @@ class TrackPlayer:
          current_track_index = 0
       else:
          current_track_index += 1
-      self.current_track_index.value = current_track_index
 
       if current_track_index >= len(self.tracks_to_play):
          log.info("Reached end of track list")
          return False
 
-      return self.play_current_track()
+      return self.play_track_at_index(current_track_index)
 
    def skip_to_end(self):
       if self.player is not None:

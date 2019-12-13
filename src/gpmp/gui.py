@@ -439,6 +439,7 @@ class QtController(QtCore.QObject):
                self.player.handle_previous_track_action)
 
       self.gui.playlist_list.doubleClicked.connect(self.handle_playlist_item_click)
+      self.gui.track_list.doubleClicked.connect(self.handle_track_item_click)
 
       self.window.theme_changed_signal.connect(self.set_theme)
       self.window.key_pressed_signal.connect(self.on_window_key_press)
@@ -518,6 +519,9 @@ class QtController(QtCore.QObject):
       elif data is not None:
          _id = data['id']
          self.load_playlists_and_do(lambda: self.play_playlist(_id))
+
+   def handle_track_item_click(self, qindex):
+      self.player.play_track_at_index(qindex.row())
 
    def handle_song_changed(self, index):
       if index is not None:
