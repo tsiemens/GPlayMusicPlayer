@@ -116,9 +116,13 @@ class WindowContent(QtWidgets.QWidget):
       self.playlist_list.setModel(self.playlist_list_model)
       self.playlist_list.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-
+      self.selected_track_index = None
       self.track_list = QtWidgets.QListView()
       self.track_list.setAlternatingRowColors(True)
+      self.track_list_model = QtGui.QStandardItemModel()
+      self.track_list.setModel(self.track_list_model)
+      self.track_list.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+      self.track_list.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
 
       self.track_info = QtWidgets.QLabel("Unknown - Unknown")
       self.track_info.setAlignment(QtCore.Qt.AlignHCenter)
@@ -225,6 +229,37 @@ class WindowContent(QtWidgets.QWidget):
          item.setData(playlist)
          self.playlist_list_model.appendRow(item)
 
+   def set_track_list_content(self, song_ids, library):
+      self.track_list_model.clear()
+      unknown_song_str = "Unknown - Unknown"
+      for song_id in song_ids:
+         song_info = library.songs.get(song_id)
+         song_str = unknown_song_str
+         if song_info:
+            song_str = "{0} - {1}".format(song_info['title'], song_info['artist'])
+         else:
+            log.error("Could not find track info for {}".format(song_id))
+
+         item = QtGui.QStandardItem(song_str)
+         self.track_list_model.appendRow(item)
+
+      # first track always auto-plays right now
+      self.set_selected_track_in_list(0)
+
+   def set_selected_track_in_list(self, index, unselect=False):
+      if not unselect and self.selected_track_index is not None:
+         self.set_selected_track_in_list(self.selected_track_index, unselect=True)
+
+      qindex = self.track_list_model.item(index).index()
+      rect = self.track_list.rectForIndex(qindex)
+
+      if unselect:
+         self.track_list.setSelection(rect, QtCore.QItemSelectionModel.Clear)
+      else:
+         self.track_list.setSelection(rect, QtCore.QItemSelectionModel.Select)
+
+      self.selected_track_index = index
+
    def set_loading_status(self, loading_status_str):
       if loading_status_str is None:
          self.loading_text.setText("")
@@ -304,12 +339,14 @@ class LibraryLoaderWorkerObject(QtCore.QObject):
 
 class PlayerStateMonitorThread(QtCore.QThread):
    prog_signal = QtCore.Signal(TrackTimingInfo)
+   song_index_signal = QtCore.Signal(int)
    song_info_signal = QtCore.Signal(str)
 
    def __init__(self, player: TrackPlayer):
       QtCore.QThread.__init__(self)
 
       self.player = player
+      self.current_song_index = None
       self.current_song_info = None
       self.interrupted = False
       self.self_terminated = False
@@ -325,6 +362,11 @@ class PlayerStateMonitorThread(QtCore.QThread):
       if self.player is not None:
          prog = min(int(self.player.get_position() * 100), 100)
          self.prog_signal.emit(self.player.get_timing_info())
+
+         player_current_song_index = self.player.current_track_index.value
+         if player_current_song_index != self.current_song_index:
+            self.current_song_index = player_current_song_index
+            self.song_index_signal.emit(player_current_song_index)
 
          player_current_song_info = self.player.current_song_info.value
          if player_current_song_info != self.current_song_info:
@@ -426,6 +468,7 @@ class QtController(QtCore.QObject):
       #  self.custom_worker_thread.prog_signal.connect(self.gui.set_progress_bar_fract)
       self.custom_worker_thread.prog_signal.connect(self.gui.update_progress)
       self.custom_worker_thread.song_info_signal.connect(self.gui.set_song_info)
+      self.custom_worker_thread.song_index_signal.connect(self.handle_song_changed)
       self.custom_worker_thread.start()
 
       # Connect any worker signals
@@ -476,6 +519,10 @@ class QtController(QtCore.QObject):
          _id = data['id']
          self.load_playlists_and_do(lambda: self.play_playlist(_id))
 
+   def handle_song_changed(self, index):
+      if index is not None:
+         self.gui.set_selected_track_in_list(index)
+
    def set_theme(self, theme):
       if theme == "dark":
          self.app.setStyleSheet(qdarkstyle.load_stylesheet_pyside2())
@@ -500,22 +547,20 @@ class QtController(QtCore.QObject):
       self.player.shuffle_tracks()
       self.player.play_next_track()
 
+      self.gui.set_track_list_content(trackIds, self.library)
+
    def play_playlist(self, playlist_id):
       log.debug(playlist_id)
-      playlist = None
-      for pl in self.library.playlist_contents:
-         if pl['id'] == playlist_id:
-            playlist = pl
-            break
-      if playlist is None:
+      trackIds = self.library.playlist_contents.get(playlist_id)
+      if trackIds is None:
          log.error("Unable to find playlist {}".format(playlist_id))
          return
-
-      trackIds = [t['trackId'] for t in playlist['tracks']]
 
       self.player.set_tracks_to_play(trackIds)
       self.player.shuffle_tracks()
       self.player.play_next_track()
+
+      self.gui.set_track_list_content(trackIds, self.library)
 
 def make_app():
    return QtWidgets.QApplication([])

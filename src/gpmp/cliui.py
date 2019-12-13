@@ -18,7 +18,7 @@ class CliUI:
 
    def get_user_selected_playlist_tracks(self):
       self.library.load_playlist_contents()
-      playlists = self.library.playlist_contents
+      playlists = self.library.playlist_meta
       for i, playlist in enumerate(playlists):
          print("[{0}]: {1}".format(i, playlist['name']))
 
@@ -28,9 +28,7 @@ class CliUI:
          return None
 
       playlist = playlists[index]
-      del playlists
-
-      return [t['trackId'] for t in playlist['tracks']]
+      return self.library.playlist_contents[playlist['id']]
 
    def run_player(self):
       self.player.initialize()

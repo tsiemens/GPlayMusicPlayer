@@ -27,7 +27,20 @@ class Library:
                                   key=lambda p: p['name'])
 
    def load_playlist_contents(self):
-      self.playlist_contents = self.api.get_all_user_playlist_contents()
+      raw_playlist_contents = self.api.get_all_user_playlist_contents()
+      self.playlist_contents = {}
+      for pl in raw_playlist_contents:
+         trimmed_pl = []
+         for track in pl['tracks']:
+            trackId = track['trackId']
+            trimmed_pl.append(trackId)
+            if trackId not in self.songs:
+               self.songs[trackId] = {
+                  'artist': track.get('artist'),
+                  'title': track.get('title'),
+               }
+
+         self.playlist_contents[pl['id']] = trimmed_pl
 
    def _get_all_songs_dict(self):
       songs = self.api.get_all_songs()
@@ -76,7 +89,7 @@ class TrackPlayer:
 
       # List of track ids
       self.tracks_to_play = []
-      self.current_track_index = None
+      self.current_track_index = Atomic(None)
       self.current_song_info = Atomic(None)
 
       self.player = None
@@ -108,7 +121,7 @@ class TrackPlayer:
 
    def set_tracks_to_play(self, track_ids):
       self.tracks_to_play = track_ids
-      self.current_track_index = None
+      self.current_track_index.value = None
       if self.player and self.player.is_playing():
          self.player.stop()
 
@@ -133,7 +146,7 @@ class TrackPlayer:
       log.debug("{}".format(event))
       if event.type == vlc.EventType.MediaPlayerEndReached:
          self.pending_events.append(PlayerEvent(str(event.type),
-                                                    self.current_track_index))
+                                                    self.current_track_index.value))
 
    def _get_player_for_url(self, url):
       if not self.player:
@@ -164,7 +177,7 @@ class TrackPlayer:
       return self.player
 
    def play_current_track(self):
-      song_id = self.tracks_to_play[self.current_track_index]
+      song_id = self.tracks_to_play[self.current_track_index.value]
       song_info = self.library.songs.get(song_id)
       song_str = "Unknown - Unknown"
       if song_info:
@@ -189,21 +202,25 @@ class TrackPlayer:
          self.player.set_position(0.0)
          return
 
-      if self.current_track_index is None or self.current_track_index <= 0:
-         self.current_track_index = 0
+      current_track_index = self.current_track_index.value
+      if current_track_index is None or current_track_index <= 0:
+         current_track_index = 0
       else:
-         self.current_track_index -= 1
+         current_track_index -= 1
+      self.current_track_index.value = current_track_index
 
       self.play_current_track()
 
    def play_next_track(self):
-      log.info("current_track_index {}".format(self.current_track_index))
-      if self.current_track_index is None:
-         self.current_track_index = 0
+      current_track_index = self.current_track_index.value
+      log.info("current_track_index {}".format(current_track_index))
+      if current_track_index is None:
+         current_track_index = 0
       else:
-         self.current_track_index += 1
+         current_track_index += 1
+      self.current_track_index.value = current_track_index
 
-      if self.current_track_index >= len(self.tracks_to_play):
+      if current_track_index >= len(self.tracks_to_play):
          log.info("Reached end of track list")
          return False
 
@@ -230,7 +247,7 @@ class TrackPlayer:
       while self.pending_events:
          event = self.pending_events.pop(0)
          log.debug("event {}".format(event))
-         if event.track_index != self.current_track_index:
+         if event.track_index != self.current_track_index.value:
             log.debug("ignoring event for other track")
             continue
 
