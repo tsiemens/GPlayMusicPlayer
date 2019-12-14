@@ -33,11 +33,14 @@ def main():
    library = Library(api)
    player = TrackPlayer(api, hotkey_mgr, library)
 
+   if not args.gui_only_test:
+      authenticate_client(api)
+
    if not args.no_gui:
       # pylint: disable-msg=import-outside-toplevel
       from gpmp import gui
       app = gui.make_app()
-      _controller = gui.QtController(app, api, hotkey_mgr, player,
+      _controller = gui.QtController(app, player,
                                      init_player=not args.gui_only_test)
 
       def sighandler(signum, _frame):
@@ -50,7 +53,6 @@ def main():
       signal.signal(signal.SIGINT, signal.SIG_DFL)
    else:
       from gpmp import cliui # pylint: disable-msg=import-outside-toplevel
-      authenticate_client(api)
       ui = cliui.CliUI(player, api, play_all_songs=args.all_songs)
       ui.exec_()
 

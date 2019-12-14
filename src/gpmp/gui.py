@@ -4,11 +4,9 @@ import pdb # pylint: disable-msg=unused-import
 from time import sleep
 
 import qdarkstyle
-from gmusicapi import Mobileclient
 from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2.QtWidgets import QSizePolicy
 
-from gpmp.auth import authenticate_client
 from gpmp.log import get_logger
 from gpmp.player import Library, TrackTimingInfo, TrackPlayer
 
@@ -375,24 +373,18 @@ class QtController(QtCore.QObject):
 
    worker_interrupt_signal = QtCore.Signal()
 
-   def __init__(self, qapp, api, hotkey_mgr, player, init_player=True):
+   def __init__(self, qapp, player, init_player=True):
       # Note qapp is being used as the parent attribute in the super
       super().__init__(qapp)
 
       self.settings = Settings()
 
-      self.api = api
-      self.hotkey_mgr = hotkey_mgr
       self.player = player
-      #  self.sr.player.value = player
       self.init_player = init_player
 
       self.library = self.player.library
 
       self.pending_playlist_action = None
-
-      if not self.api.is_authenticated() and self.init_player:
-         authenticate_client(self.api)
 
       # Create a gui object.
       self.window = Window(self.settings.theme())
