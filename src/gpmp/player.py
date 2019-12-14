@@ -234,9 +234,15 @@ class TrackPlayer:
 
       return self.play_track_at_index(current_track_index)
 
-   def skip_to_end(self):
+   def set_position(self, pos):
+      """Sets the position in the current track.
+      pos should be from 0.0 to 1.0
+      """
       if self.player is not None:
-         self.player.set_position(0.97)
+         self.player.set_position(pos)
+
+   def skip_to_end(self):
+      self.set_position(0.97)
 
    def toggle_play(self):
       if self.player is None:

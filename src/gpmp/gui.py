@@ -9,6 +9,7 @@ from PySide2.QtWidgets import QSizePolicy
 
 from gpmp.log import get_logger
 from gpmp.player import Library, TrackTimingInfo, TrackPlayer
+from gpmp.widgets import MediaSlider
 
 log = get_logger()
 
@@ -111,8 +112,9 @@ class WindowContent(QtWidgets.QWidget):
       sp = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum)
       self.track_info.setSizePolicy(sp)
 
-      self.progress_bar = QtWidgets.QProgressBar()
-      self.progress_bar.setFormat("")
+      self.progress_bar = MediaSlider()
+      self.progress_bar.setOrientation(QtCore.Qt.Horizontal)
+      self.progress_bar.setTickInterval(1)
       self.progress_bar.setMaximumHeight(10)
       self.progress_bar.setMinimum(0)
       self.progress_bar.setMaximum(self.progress_bar_max)
@@ -187,7 +189,9 @@ class WindowContent(QtWidgets.QWidget):
          seconds_to_minutes_str(duration_secs)))
 
    def set_progress_bar_fract(self, prog):
-      self.progress_bar.setValue(prog * self.progress_bar_max)
+      if not self.progress_bar.isSliderDown():
+         # Do not update if the user is moving the slider
+         self.progress_bar.setValue(prog * self.progress_bar_max)
 
    def set_song_info(self, song_info: str):
       if song_info is not None:
@@ -244,33 +248,6 @@ class WindowContent(QtWidgets.QWidget):
          self.loading_text.setText("")
       else:
          self.loading_text.setText(loading_status_str)
-
-   def pop_tree(self):
-      self.tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-      model = QtGui.QStandardItemModel()
-      model.setHorizontalHeaderLabels(['col1', 'col2', 'col3'])
-      self.tree.setModel(model)
-      self.tree.setUniformRowHeights(True)
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      # populate data
-      for i in range(3):
-         parent1 = QtGui.QStandardItem('Family {}. Some long status text for sp'.format(i))
-         for j in range(3):
-            child1 = QtGui.QStandardItem('Child {}'.format(i*3+j))
-            child2 = QtGui.QStandardItem('row: {}, col: {}'.format(i, j+1))
-            child3 = QtGui.QStandardItem('row: {}, col: {}'.format(i, j+2))
-            parent1.appendRow([child1, child2, child3])
-         model.appendRow(parent1)
-         # span container columns
-         self.tree.setFirstColumnSpanned(i, self.tree.rootIndex(), True)
-
-      parent2 = QtGui.QStandardItem("No children here")
-      model.appendRow(parent2)
-
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      # expand third container
-      index = model.indexFromItem(parent1)
-      self.tree.expand(index)
 
 class LibraryLoaderWorkerObject(QtCore.QObject):
    load_library_done_signal = QtCore.Signal()
@@ -403,6 +380,7 @@ class QtController(QtCore.QObject):
 
       self.gui.playlist_list.doubleClicked.connect(self.handle_playlist_item_click)
       self.gui.track_list.doubleClicked.connect(self.handle_track_item_click)
+      self.gui.progress_bar.sliderReleased.connect(self.handle_track_progress_bar_change)
 
       self.window.theme_changed_signal.connect(self.set_theme)
       self.window.key_pressed_signal.connect(self.on_window_key_press)
@@ -484,6 +462,11 @@ class QtController(QtCore.QObject):
 
    def handle_track_item_click(self, qindex):
       self.player.play_track_at_index(qindex.row())
+
+   def handle_track_progress_bar_change(self):
+      pos = self.gui.progress_bar.value() / WindowContent.progress_bar_max
+      log.debug(pos)
+      self.player.set_position(pos)
 
    def handle_song_changed(self, index):
       if index is not None:
