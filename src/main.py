@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
+"""Main driver for gplaymusicplayer. Defaults to GUI"""
 
 import argparse
-import os
+import signal
 
 from gmusicapi import Mobileclient
 from setproctitle import setproctitle
@@ -10,7 +11,7 @@ from system_hotkey import SystemHotkey
 from gpmp.auth import authenticate_client
 from gpmp.log import get_logger
 from gpmp.player import Library, TrackPlayer
-from gpmp.util import pdb
+from gpmp.util import pdb # pylint: disable-msg=unused-import
 
 log = get_logger()
 
@@ -19,7 +20,8 @@ def main():
 
    parser = argparse.ArgumentParser()
    parser.add_argument('--all-songs', action='store_true',
-                       help="Play all songs in the library, rather than selecting a playlist (CLI mode only)")
+                       help="Play all songs in the library, rather than selecting a "
+                            "playlist (CLI mode only)")
    parser.add_argument('--no-gui', action='store_true', default=False,
                        help="Run in CLI mode")
    parser.add_argument('--gui-only-test', action='store_true',
@@ -32,23 +34,23 @@ def main():
    player = TrackPlayer(api, hotkey_mgr, library)
 
    if not args.no_gui:
+      # pylint: disable-msg=import-outside-toplevel
       from gpmp import gui
       app = gui.make_app()
-      controller = gui.QtController(app, api, hotkey_mgr, player,
-                                    init_player=not args.gui_only_test)
+      _controller = gui.QtController(app, api, hotkey_mgr, player,
+                                     init_player=not args.gui_only_test)
 
-      def sighandler(signum, frame):
+      def sighandler(signum, _frame):
          if signum == signal.SIGINT:
             print("sighandler: Ctrl-C")
             app.quit()
 
-      import signal
       signal.signal(signal.SIGINT, sighandler)
       app.exec_()
       signal.signal(signal.SIGINT, signal.SIG_DFL)
    else:
+      from gpmp import cliui # pylint: disable-msg=import-outside-toplevel
       authenticate_client(api)
-      from gpmp import cliui
       ui = cliui.CliUI(player, api, play_all_songs=args.all_songs)
       ui.exec_()
 

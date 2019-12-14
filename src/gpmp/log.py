@@ -1,30 +1,32 @@
+"""App logging setup and utilities"""
+
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 import tempfile
 import traceback
 
-#  _format = '%(asctime)s %(levelname)s %(funcName)s(%(lineno)d) %(message)s'
-_format = '%(asctime)s %(name)s:%(levelname)s %(funcName)s: %(message)s'
-_log_format = logging.Formatter(_format)
+#  _FORMAT = '%(asctime)s %(levelname)s %(funcName)s(%(lineno)d) %(message)s'
+_FORMAT = '%(asctime)s %(name)s:%(levelname)s %(funcName)s: %(message)s'
+_LOG_FORMATTER = logging.Formatter(_FORMAT)
 
-log_file = os.path.join(tempfile.gettempdir(), "gplaymusicplayer.log")
+LOG_FILE = os.path.join(tempfile.gettempdir(), "gplaymusicplayer.log")
 
-_handler = RotatingFileHandler(log_file, mode='a', maxBytes=5*1024*1024,
+_HANDLER = RotatingFileHandler(LOG_FILE, mode='a', maxBytes=5*1024*1024,
                                backupCount=1, encoding=None, delay=0)
-_handler.setFormatter(_log_format)
+_HANDLER.setFormatter(_LOG_FORMATTER)
 
-level_abrev_to_level = {
+LEVEL_ABREV_TO_LEVEL = {
       'E': logging.ERROR,
       'W': logging.WARNING,
       'I': logging.INFO,
       'D': logging.DEBUG,
    }
-level_to_level_abrev = {
-      l: a for a, l in level_abrev_to_level.items()
+LEVEL_TO_LEVEL_ABREV = {
+      l: a for a, l in LEVEL_ABREV_TO_LEVEL.items()
    }
 
-_logging_levels = {}
+_logging_levels = {} # pylint: disable-msg=invalid-name
 def set_logger_levels():
    """Gets the logging levels specified in the LOGGING env var.
    Should be formatted as: <name>/(E|W|I|D),...
@@ -41,16 +43,16 @@ def set_logger_levels():
          name = name_and_level.strip()
          level = 'D'
 
-      full_level = level_abrev_to_level.get(level, logging.WARNING)
+      full_level = LEVEL_ABREV_TO_LEVEL.get(level, logging.WARNING)
       _logging_levels[name] = full_level
 
 set_logger_levels()
 
-_log_logger = logging.getLogger("log")
+_log_logger = logging.getLogger("log") # pylint: disable-msg=invalid-name
 _log_logger.setLevel(logging.INFO)
-_log_logger.addHandler(_handler)
+_log_logger.addHandler(_HANDLER)
 
-def get_logger(name=None):
+def get_logger(name=None) -> logging.Logger:
    if name is None:
       stack = traceback.extract_stack()
       # Get the filename without py extension of the caller
@@ -58,7 +60,7 @@ def get_logger(name=None):
 
    log = logging.getLogger(name)
    level = _logging_levels.get(name, logging.WARNING)
-   _log_logger.info("{}/{}".format(name, level_to_level_abrev[level]))
+   _log_logger.info("%s/%s", name, LEVEL_TO_LEVEL_ABREV[level])
    log.setLevel(_logging_levels.get(name, logging.WARNING))
-   log.addHandler(_handler)
+   log.addHandler(_HANDLER)
    return log

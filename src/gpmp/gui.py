@@ -1,5 +1,6 @@
-import sys
-import random
+"""Logic and layouts for Qt GUI"""
+
+import pdb # pylint: disable-msg=unused-import
 from time import sleep
 
 import qdarkstyle
@@ -10,13 +11,10 @@ from PySide2.QtWidgets import QSizePolicy
 from gpmp.auth import authenticate_client
 from gpmp.log import get_logger
 from gpmp.player import Library, TrackTimingInfo, TrackPlayer
-from gpmp.threading import Atomic
 
 log = get_logger()
 
-import pdb
-
-def secondsToMinuteStr(secs):
+def seconds_to_minutes_str(secs):
    mins = int(secs / 60)
    secs = int(secs) % 60
    return "{}:{:02d}".format(mins, secs)
@@ -25,10 +23,10 @@ class Settings:
    def __init__(self):
       self.settings = QtCore.QSettings("gplaymusicplayer")
 
-   def setTheme(self, theme):
+   def set_theme(self, theme):
       self.settings.setValue("theme", theme)
 
-   def getTheme(self):
+   def theme(self):
       return self.settings.value("theme", "light")
 
 class Window(QtWidgets.QMainWindow):
@@ -50,25 +48,23 @@ class Window(QtWidgets.QMainWindow):
       #  mb.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
       mb.setHidden(True)
 
-      #  self.themeAct = QtWidgets.QAction("Theme")
+      edit_menu = mb.addMenu("&Edit")
+      theme_menu = edit_menu.addMenu("Theme")
 
-      editMenu = mb.addMenu("&Edit")
-      themeMenu = editMenu.addMenu("Theme")
+      self.theme_act_grp = QtWidgets.QActionGroup(theme_menu)
+      self.theme_act_grp.setExclusive(True)
 
-      self.themeActGrp = QtWidgets.QActionGroup(themeMenu)
-      self.themeActGrp.setExclusive(True)
-
-      def _addTheme(attrName, name):
-         nonlocal themeMenu
+      def _add_theme(attr_name, name):
+         nonlocal theme_menu
          action = QtWidgets.QAction(name)
-         self.theme_actions[attrName] = action
+         self.theme_actions[attr_name] = action
          action.setCheckable(True)
          action.triggered.connect(self.on_theme_action_triggered)
-         self.themeActGrp.addAction(action)
-         themeMenu.addAction(action)
+         self.theme_act_grp.addAction(action)
+         theme_menu.addAction(action)
 
-      _addTheme("light", "Light")
-      _addTheme("dark", "Dark")
+      _add_theme("light", "Light")
+      _add_theme("dark", "Dark")
 
    # Overrides
    def keyPressEvent(self, event):
@@ -97,10 +93,10 @@ class Window(QtWidgets.QMainWindow):
       for theme, theme_act in self.theme_actions.items():
          if theme_act.isChecked():
             self.theme_changed_signal.emit(theme)
-            #  self.set_theme(theme)
             return
 
 class WindowContent(QtWidgets.QWidget):
+   # pylint: disable-msg=too-many-instance-attributes
    progress_bar_max = 500
 
    AllSongsItem = object()
@@ -109,6 +105,7 @@ class WindowContent(QtWidgets.QWidget):
       super().__init__()
       self.layout_player()
 
+   # pylint: disable-msg=too-many-statements,attribute-defined-outside-init
    def layout_player(self):
       self.playlist_list = QtWidgets.QListView()
       self.playlist_list.setAlternatingRowColors(True)
@@ -201,14 +198,11 @@ class WindowContent(QtWidgets.QWidget):
          self.set_progress_bar_fract(0)
 
       self.progress_text.setText("{}/{}".format(
-         secondsToMinuteStr(currtime),
-         secondsToMinuteStr(duration_secs)))
+         seconds_to_minutes_str(currtime),
+         seconds_to_minutes_str(duration_secs)))
 
    def set_progress_bar_fract(self, prog):
-      try:
-         self.progress_bar.setValue(prog * self.progress_bar_max)
-      except Exception as e:
-         log.error("caught exception: {}".format(e))
+      self.progress_bar.setValue(prog * self.progress_bar_max)
 
    def set_song_info(self, song_info: str):
       if song_info is not None:
@@ -238,7 +232,7 @@ class WindowContent(QtWidgets.QWidget):
          if song_info:
             song_str = "{0} - {1}".format(song_info['title'], song_info['artist'])
          else:
-            log.error("Could not find track info for {}".format(song_id))
+            log.error("Could not find track info for %s", song_id)
 
          item = QtGui.QStandardItem(song_str)
          self.track_list_model.appendRow(item)
@@ -275,15 +269,15 @@ class WindowContent(QtWidgets.QWidget):
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # populate data
       for i in range(3):
-          parent1 = QtGui.QStandardItem('Family {}. Some long status text for sp'.format(i))
-          for j in range(3):
-              child1 = QtGui.QStandardItem('Child {}'.format(i*3+j))
-              child2 = QtGui.QStandardItem('row: {}, col: {}'.format(i, j+1))
-              child3 = QtGui.QStandardItem('row: {}, col: {}'.format(i, j+2))
-              parent1.appendRow([child1, child2, child3])
-          model.appendRow(parent1)
-          # span container columns
-          self.tree.setFirstColumnSpanned(i, self.tree.rootIndex(), True)
+         parent1 = QtGui.QStandardItem('Family {}. Some long status text for sp'.format(i))
+         for j in range(3):
+            child1 = QtGui.QStandardItem('Child {}'.format(i*3+j))
+            child2 = QtGui.QStandardItem('row: {}, col: {}'.format(i, j+1))
+            child3 = QtGui.QStandardItem('row: {}, col: {}'.format(i, j+2))
+            parent1.appendRow([child1, child2, child3])
+         model.appendRow(parent1)
+         # span container columns
+         self.tree.setFirstColumnSpanned(i, self.tree.rootIndex(), True)
 
       parent2 = QtGui.QStandardItem("No children here")
       model.appendRow(parent2)
@@ -293,23 +287,13 @@ class WindowContent(QtWidgets.QWidget):
       index = model.indexFromItem(parent1)
       self.tree.expand(index)
 
-class SharedResources:
-   def __init__(self, api, hotkey_mgr):
-      self.api = api
-      self.hotkey_mgr = hotkey_mgr
-      self.player = Atomic(None)
-
 class LibraryLoaderWorkerObject(QtCore.QObject):
-
-   #  signalStatus = QtCore.pyqtSignal(str)
-   #  prog_signal = QtCore.Signal(int)
    load_library_done_signal = QtCore.Signal()
    load_playlists_done_signal = QtCore.Signal()
 
-   def __init__(self, api: Mobileclient, player: TrackPlayer, library: Library,
+   def __init__(self, player: TrackPlayer, library: Library,
                 parent=None):
-      super(self.__class__, self).__init__(parent)
-      self.api = api
+      super().__init__(parent)
       self.player = player
       self.library = library
 
@@ -322,9 +306,9 @@ class LibraryLoaderWorkerObject(QtCore.QObject):
 
          log.debug("done")
          self.load_library_done_signal.emit()
-      except Exception as e:
+      except Exception as e: # pylint: disable-msg=broad-except
          print("load_library caught exception", e)
-         log.error("caught exception: {}".format(e))
+         log.error("caught exception: %s", e)
 
    def load_playlist_contents(self):
       log.debug("")
@@ -333,9 +317,9 @@ class LibraryLoaderWorkerObject(QtCore.QObject):
 
          log.debug("done")
          self.load_playlists_done_signal.emit()
-      except Exception as e:
+      except Exception as e: # pylint: disable-msg=broad-except
          print("load_playlist_contents caught exception", e)
-         log.error("caught exception: {}".format(e))
+         log.error("caught exception: %s", e)
 
 class PlayerStateMonitorThread(QtCore.QThread):
    prog_signal = QtCore.Signal(TrackTimingInfo)
@@ -360,7 +344,6 @@ class PlayerStateMonitorThread(QtCore.QThread):
 
    def send_ui_update_signal(self):
       if self.player is not None:
-         prog = min(int(self.player.get_position() * 100), 100)
          self.prog_signal.emit(self.player.get_timing_info())
 
          player_current_song_index = self.player.current_track_index.value
@@ -384,7 +367,8 @@ class PlayerStateMonitorThread(QtCore.QThread):
       self.self_terminated = True
 
 class QtController(QtCore.QObject):
-   #  signalStatus = QtCore.pyqtSignal(str)
+   # pylint: disable-msg=too-many-instance-attributes
+
    worker_start_signal = QtCore.Signal()
    load_player_start_signal = QtCore.Signal()
    load_playlists_start_signal = QtCore.Signal()
@@ -393,7 +377,7 @@ class QtController(QtCore.QObject):
 
    def __init__(self, qapp, api, hotkey_mgr, player, init_player=True):
       # Note qapp is being used as the parent attribute in the super
-      super(self.__class__, self).__init__(qapp)
+      super().__init__(qapp)
 
       self.settings = Settings()
 
@@ -411,16 +395,16 @@ class QtController(QtCore.QObject):
          authenticate_client(self.api)
 
       # Create a gui object.
-      self.window = Window(self.settings.getTheme())
+      self.window = Window(self.settings.theme())
       self.gui = self.window.widget
       self.window.resize(500, 500)
 
-      self.set_theme(self.settings.getTheme())
+      self.set_theme(self.settings.theme())
 
       self.connect_controls()
 
       # Create a new worker thread.
-      self.createWorkerThreads()
+      self.create_worker_threads()
 
       # Make any cross object connections.
       #  self._connectSignals()
@@ -436,7 +420,7 @@ class QtController(QtCore.QObject):
          self.gui.play_pause_button.clicked.connect(self.player.toggle_play)
          self.gui.next_button.clicked.connect(self.player.play_next_track)
          self.gui.previous_button.clicked.connect(
-               self.player.handle_previous_track_action)
+            self.player.handle_previous_track_action)
 
       self.gui.playlist_list.doubleClicked.connect(self.handle_playlist_item_click)
       self.gui.track_list.doubleClicked.connect(self.handle_track_item_click)
@@ -444,19 +428,19 @@ class QtController(QtCore.QObject):
       self.window.theme_changed_signal.connect(self.set_theme)
       self.window.key_pressed_signal.connect(self.on_window_key_press)
 
-   def createWorkerThreads(self):
-      self.parent().aboutToQuit.connect(self.forceWorkerQuit)
+   def create_worker_threads(self):
+      self.parent().aboutToQuit.connect(self.force_worker_quit)
 
-      self.loader_worker = LibraryLoaderWorkerObject(self.api, self.player,
+      self.loader_worker = LibraryLoaderWorkerObject(self.player,
                                                      self.library)
       self.worker_thread = QtCore.QThread()
       self.loader_worker.moveToThread(self.worker_thread)
       self.loader_worker.load_library_done_signal.connect(self.handle_player_loaded)
       self.loader_worker.load_playlists_done_signal.connect(
-            self.handle_playlists_loaded)
+         self.handle_playlists_loaded)
       self.load_player_start_signal.connect(self.loader_worker.load_library)
       self.load_playlists_start_signal.connect(
-            self.loader_worker.load_playlist_contents)
+         self.loader_worker.load_playlist_contents)
       self.worker_thread.start()
 
       if self.init_player:
@@ -466,7 +450,6 @@ class QtController(QtCore.QObject):
       #  self.loader_worker.load_library()
 
       self.custom_worker_thread = PlayerStateMonitorThread(self.player)
-      #  self.custom_worker_thread.prog_signal.connect(self.gui.set_progress_bar_fract)
       self.custom_worker_thread.prog_signal.connect(self.gui.update_progress)
       self.custom_worker_thread.song_info_signal.connect(self.gui.set_song_info)
       self.custom_worker_thread.song_index_signal.connect(self.handle_song_changed)
@@ -477,7 +460,7 @@ class QtController(QtCore.QObject):
       #  self.gui.button_start.clicked.connect(self.worker.startWork)
       self.worker_interrupt_signal.connect(self.custom_worker_thread.interrupt)
 
-   def forceWorkerQuit(self):
+   def force_worker_quit(self):
       try:
          if self.worker_thread.isRunning():
             # Gracefully quit, once the thread reaches the event loop
@@ -490,8 +473,8 @@ class QtController(QtCore.QObject):
             #  self.custom_worker_thread.terminate()
             #  if self.custom_worker_thread.isRunning():
                #  self.custom_worker_thread.wait()
-      except Exception as e:
-         log.error("caught exception: {}".format(e))
+      except Exception as e: # pylint: disable-msg=broad-except
+         log.error("caught exception: %s", e)
 
    def load_playlists_and_do(self, action):
       if self.library.playlist_contents:
@@ -513,7 +496,7 @@ class QtController(QtCore.QObject):
 
    def handle_playlist_item_click(self, qindex):
       data = self.gui.playlist_list_model.item(qindex.row()).data()
-      log.debug("handle_playlist_item_click: {}, data: {}".format(qindex, data))
+      log.debug("handle_playlist_item_click: %r, data: %r", qindex, data)
       if data is WindowContent.AllSongsItem:
          self.play_all_songs()
       elif data is not None:
@@ -533,7 +516,7 @@ class QtController(QtCore.QObject):
       else:
          self.app.setStyleSheet("")
 
-      self.settings.setTheme(theme)
+      self.settings.set_theme(theme)
 
    def on_window_key_press(self, event):
       if event.key() == QtCore.Qt.Key_Alt:
@@ -545,26 +528,26 @@ class QtController(QtCore.QObject):
 
    def play_all_songs(self):
       log.debug("")
-      trackIds = list(self.library.songs.keys())
+      track_ids = list(self.library.songs.keys())
 
-      self.player.set_tracks_to_play(trackIds)
+      self.player.set_tracks_to_play(track_ids)
       self.player.shuffle_tracks()
       self.player.play_next_track()
 
-      self.gui.set_track_list_content(trackIds, self.library)
+      self.gui.set_track_list_content(track_ids, self.library)
 
    def play_playlist(self, playlist_id):
       log.debug(playlist_id)
-      trackIds = self.library.playlist_contents.get(playlist_id)
-      if trackIds is None:
-         log.error("Unable to find playlist {}".format(playlist_id))
+      track_ids = self.library.playlist_contents.get(playlist_id)
+      if track_ids is None:
+         log.error("Unable to find playlist %s", playlist_id)
          return
 
-      self.player.set_tracks_to_play(trackIds)
+      self.player.set_tracks_to_play(track_ids)
       self.player.shuffle_tracks()
       self.player.play_next_track()
 
-      self.gui.set_track_list_content(trackIds, self.library)
+      self.gui.set_track_list_content(track_ids, self.library)
 
 def make_app():
    return QtWidgets.QApplication([])

@@ -1,10 +1,15 @@
+"""Logic and layouts for CLI UI"""
+
 import threading
 from time import sleep
 
 from gmusicapi import Mobileclient
 from progress.bar import IncrementalBar
 
-from gpmp.player import TrackPlayer, Library
+from gpmp.log import get_logger
+from gpmp.player import TrackPlayer
+
+log = get_logger()
 
 class CliUI:
    def __init__(self, player: TrackPlayer, api: Mobileclient,
@@ -33,11 +38,11 @@ class CliUI:
    def run_player(self):
       self.player.initialize()
       if self.play_all_songs:
-         trackIds = list(self.library.songs.keys())
+         track_ids = list(self.library.songs.keys())
       else:
-         trackIds = self.get_user_selected_playlist_tracks()
+         track_ids = self.get_user_selected_playlist_tracks()
 
-      self.player.set_tracks_to_play(trackIds)
+      self.player.set_tracks_to_play(track_ids)
       self.player.shuffle_tracks()
 
       self.player.toggle_play()
@@ -89,5 +94,3 @@ class CliUI:
       except KeyboardInterrupt:
          print("\nReceived Ctrl-C")
          self.clear_progress_bar()
-         exited = True
-

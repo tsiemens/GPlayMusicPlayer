@@ -1,3 +1,5 @@
+"""Classes for media player and library"""
+
 from dataclasses import dataclass
 import random
 from time import sleep
@@ -32,10 +34,10 @@ class Library:
       for pl in raw_playlist_contents:
          trimmed_pl = []
          for track in pl['tracks']:
-            trackId = track['trackId']
-            trimmed_pl.append(trackId)
-            if trackId not in self.songs:
-               self.songs[trackId] = {
+            track_id = track['trackId']
+            trimmed_pl.append(track_id)
+            if track_id not in self.songs:
+               self.songs[track_id] = {
                   'artist': track.get('artist'),
                   'title': track.get('title'),
                }
@@ -45,12 +47,12 @@ class Library:
    def _get_all_songs_dict(self):
       songs = self.api.get_all_songs()
       return {
-            song['id']: {
-                  'artist': song.get('artist'),
-                  'title': song.get('title'),
-               }
-            for song in songs
+         song['id']: {
+            'artist': song.get('artist'),
+            'title': song.get('title'),
          }
+         for song in songs
+      }
 
 class MediaPlayer:
    def __init__(self, url):
@@ -79,6 +81,8 @@ class TrackTimingInfo:
    duration_secs: float
 
 class TrackPlayer:
+   # pylint: disable-msg=too-many-instance-attributes
+
    def __init__(self, api: Mobileclient, hotkey_mgr: SystemHotkey, library: Library):
       self.initialized_val = Atomic(False)
       self.api = api
@@ -101,7 +105,7 @@ class TrackPlayer:
 
    @property
    def initialized(self):
-      self.initialized_val.value
+      return self.initialized_val.value
 
    def initialize(self):
       if self.library.songs is None:
@@ -143,10 +147,10 @@ class TrackPlayer:
       self.play_next_track()
 
    def handle_player_event(self, event):
-      log.debug("{}".format(event))
+      log.debug(event)
       if event.type == vlc.EventType.MediaPlayerEndReached:
          self.pending_events.append(PlayerEvent(str(event.type),
-                                                    self.current_track_index.value))
+                                                self.current_track_index.value))
 
    def _get_player_for_url(self, url):
       if not self.player:
@@ -183,14 +187,14 @@ class TrackPlayer:
       if song_info:
          song_str = "{0} - {1}".format(song_info['title'], song_info['artist'])
       else:
-         log.error("Could not find track info for {}".format(song_id))
+         log.error("Could not find track info for %s", song_id)
 
       self.current_song_info.value = song_str
 
       url = self.api.get_stream_url(song_id)
       code = self._get_player_for_url(url).play()
       if code != 0:
-         log.error("player.play returned error: {}".format(code))
+         log.error("player.play returned error: %d", code)
          return False
 
       log.info("Started player: OK")
@@ -218,7 +222,7 @@ class TrackPlayer:
 
    def play_next_track(self):
       current_track_index = self.current_track_index.value
-      log.info("current_track_index {}".format(current_track_index))
+      log.info("current_track_index %d", current_track_index)
       if current_track_index is None:
          current_track_index = 0
       else:
@@ -242,15 +246,14 @@ class TrackPlayer:
       else:
          code = self.player.play()
          if code != 0:
-            log.error("player.play returned error: {}".format(code))
+            log.error("player.play returned error: %d", code)
 
    def do_thread_loop(self):
       if self.pending_events:
-         log.debug("n pending_events: {}".format(
-                   len(self.pending_events)))
+         log.debug("n pending_events: %d", len(self.pending_events))
       while self.pending_events:
          event = self.pending_events.pop(0)
-         log.debug("event {}".format(event))
+         log.debug("event %r", event)
          if event.track_index != self.current_track_index.value:
             log.debug("ignoring event for other track")
             continue

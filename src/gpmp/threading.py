@@ -1,5 +1,8 @@
+"""Utilities for multi-threading"""
+
 import threading
 
+# pylint: disable-msg=too-few-public-methods
 class Atomic:
    def __init__(self, value=None):
       self._value = value
@@ -11,7 +14,7 @@ class Atomic:
          return self._value
 
    @value.setter
-   def value(self, v):
+   def value(self, val):
       with self._lock:
-         self._value = v
+         self._value = val
          return self._value

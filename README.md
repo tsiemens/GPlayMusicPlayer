@@ -32,3 +32,5 @@ I didn't find another alternative which I found acceptable, so here we are...
 ```
 ./setup.sh
 ```
+
+Run `pylint src` to verify compliance with the project standards.

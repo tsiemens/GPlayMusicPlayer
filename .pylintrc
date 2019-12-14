@@ -1,0 +1,27 @@
+[MASTER]
+
+# A comma-separated list of package or module names from where C extensions may
+# be loaded. Extensions are loading into the active Python interpreter and may
+# run arbitrary code.
+extension-pkg-whitelist=PySide2,setproctitle
+
+[BASIC]
+
+# Regular expression which should only match function or class names that do
+# not require a docstring.
+no-docstring-rgx=.*
+
+# Number of spaces of indent required inside a hanging or continued line.
+indent-after-paren=3
+
+# String used as indentation unit.
+indent-string='   '
+
+# Regular expression matching correct constant names. Overrides const-naming-
+# style.
+# The per-module log is not a constant, it is a function, so ignore it.
+const-rgx=^[A-Z_]+$|^log$
+
+# Regular expression matching correct variable names. Overrides variable-
+# naming-style.
+variable-rgx=^[0-9a-z_]+$
