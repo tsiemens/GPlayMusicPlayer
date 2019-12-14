@@ -43,8 +43,6 @@ class Window(QtWidgets.QMainWindow):
 
    def layout_menu(self):
       mb = self.menuBar()
-      #  mb.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-      mb.setHidden(True)
 
       edit_menu = mb.addMenu("&Edit")
       theme_menu = edit_menu.addMenu("Theme")
@@ -68,17 +66,6 @@ class Window(QtWidgets.QMainWindow):
    def keyPressEvent(self, event):
       super(Window, self).keyPressEvent(event)
       self.key_pressed_signal.emit(event)
-
-   def toggle_window_hidden(self):
-      mb = self.menuBar()
-      hidden = mb.isHidden()
-      # Toggle menu visibility
-      mb.setHidden(not hidden)
-      hidden = not hidden
-      if hidden:
-         mb.clearFocus()
-      else:
-         mb.setFocus()
 
    def set_checked_theme(self, theme):
       if theme not in self.theme_actions:
@@ -511,8 +498,8 @@ class QtController(QtCore.QObject):
       self.settings.set_theme(theme)
 
    def on_window_key_press(self, event):
-      if event.key() == QtCore.Qt.Key_Alt:
-         self.window.toggle_window_hidden()
+      #  if event.key() == QtCore.Qt.Key_Alt:
+      pass
 
    # ********************************************************************************
    # Player operations
