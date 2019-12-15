@@ -25,12 +25,23 @@ I didn't find another alternative which I found acceptable, so here we are...
  - Won't update to changes to the library automatically (requires restart)
  - No search functionality
  - Only plays on shuffle
+ 
+## Installation
+1. Install VLC on your machine.
+2. Clone this repository and set up.
+```
+$ git clone https://github.com/tsiemens/GPlayMusicPlayer.git
+$ cd ./GPlayMusicPlayer
+$ ./setup.sh
+```
+3. Run `./gplaymusicplayer`. You may want to add a symlink to this script somewhere in your PATH.
 
 ## Development
-1. Install VLC on your machine
-2. Setup project and dependencies
+Just follow the installation instructions.
+
+If you need/want to run manual `pip` commands, enter the venv environment:
 ```
-./setup.sh
+source venv/bin/activate
 ```
 
 Run `pylint src` to verify compliance with the project standards.
