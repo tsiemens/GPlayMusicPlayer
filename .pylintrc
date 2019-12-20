@@ -5,6 +5,9 @@
 # run arbitrary code.
 extension-pkg-whitelist=PySide2,setproctitle
 
+[MESSAGES CONTROL]
+disable=chained-comparison
+
 [BASIC]
 
 # Regular expression which should only match function or class names that do
@@ -20,8 +23,11 @@ indent-string='   '
 # Regular expression matching correct constant names. Overrides const-naming-
 # style.
 # The per-module log is not a constant, it is a function, so ignore it.
-const-rgx=^[A-Z_]+$|^log$
+const-rgx=^_.*|^[A-Z_]+$|^log$
 
 # Regular expression matching correct variable names. Overrides variable-
 # naming-style.
 variable-rgx=^[0-9a-z_]+$
+
+[TYPECHECK]
+ignored-modules=socket
