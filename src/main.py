@@ -4,11 +4,10 @@
 import argparse
 import signal
 
-from gmusicapi import Mobileclient
 from setproctitle import setproctitle
 from system_hotkey import SystemHotkey
 
-from gpmp.auth import authenticate_client
+from gpmp.api import Client
 from gpmp.log import get_logger
 from gpmp.player import Library, TrackPlayer
 from gpmp.util import pdb # pylint: disable-msg=unused-import
@@ -28,13 +27,13 @@ def main():
                        help="Don't load the player (for testing)")
    args = parser.parse_args()
 
-   api = Mobileclient()
+   api = Client()
    hotkey_mgr = SystemHotkey()
    library = Library(api)
    player = TrackPlayer(api, hotkey_mgr, library)
 
    if not args.gui_only_test:
-      authenticate_client(api)
+      api.authenticate()
 
    if not args.no_gui:
       # pylint: disable-msg=import-outside-toplevel

@@ -1,8 +1,10 @@
-"""Utilities for authenticating gmusicapi"""
+"""A wrapper around the gmusicapi client, and utilities for using it"""
 
 import os
 from socket import AddressFamily
+
 import psutil
+import requests
 
 import gmusicapi.clients.mobileclient as mc
 from gmusicapi import Mobileclient
@@ -56,9 +58,41 @@ def _getmac():
 
 mc.getmac = _getmac
 
-def authenticate_client(api: Mobileclient):
-   if not os.path.exists(OAUTH_FILE):
-      api.perform_oauth(OAUTH_FILE)
+class Client:
+   def __init__(self):
+      self.api = Mobileclient()
+      self._client_authenticated = False
 
-   device_id = Mobileclient.FROM_MAC_ADDRESS
-   api.oauth_login(device_id, oauth_credentials=OAUTH_FILE)
+   def _authenticate_client(self):
+      if not os.path.exists(OAUTH_FILE):
+         self.api.perform_oauth(OAUTH_FILE)
+
+      device_id = Mobileclient.FROM_MAC_ADDRESS
+      self.api.oauth_login(device_id, oauth_credentials=OAUTH_FILE)
+
+   def authenticate(self):
+      if self._client_authenticated:
+         # Get a new client and reauthenticate
+         self.api = Mobileclient()
+      self._authenticate_client()
+      self._client_authenticated = True
+
+   def __getattr__(self, attr):
+      '''For other attributes, grab it from the Mobileclient'''
+      attrval = getattr(self.api, attr)
+      if callable(attrval):
+         # Sometimes we will get timeouts (and possibly other exceptions) when
+         # the API has existed for a while. In this case, we need to get a new
+         # Mobileclient and reauthenticate it.
+         # Wrap the Mobileclient's method such that it can handle this kind
+         # of failure once.
+         def wrapper(*args, **kwargs):
+            try:
+               return attrval(*args, **kwargs)
+            except requests.exceptions.ReadTimeout as e:
+               log.warning("ReadTimeout calling %s:%r"
+                           "\nReauthenticating client and retrying.", attr, e)
+               self.authenticate()
+               return getattr(self.api, attr)(*args, **kwargs)
+         return wrapper
+      return attrval
