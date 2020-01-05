@@ -34,7 +34,7 @@ class Window(QtWidgets.QMainWindow):
 
    def __init__(self, theme):
       super().__init__()
-      self.setWindowTitle("gplaymusicplayer")
+      self.set_window_title()
       self.settings = Settings()
       self.theme_actions = {}
       self.widget = WindowContent()
@@ -80,6 +80,14 @@ class Window(QtWidgets.QMainWindow):
          if theme_act.isChecked():
             self.theme_changed_signal.emit(theme)
             return
+
+   def set_window_title(self, song_info:str=None):
+      if song_info is None:
+         self.setWindowTitle("gplaymusicplayer")
+      else:
+         # 𝅘𝅥𝅮  Song title - Artist
+         note_char = "\U0001D160"
+         self.setWindowTitle("{}   {}   {}".format(note_char, song_info, note_char))
 
 class WindowContent(QtWidgets.QWidget):
    # pylint: disable-msg=too-many-instance-attributes
@@ -408,7 +416,7 @@ class QtController(QtCore.QObject):
 
       self.custom_worker_thread = PlayerStateMonitorThread(self.player)
       self.custom_worker_thread.prog_signal.connect(self.gui.update_progress)
-      self.custom_worker_thread.song_info_signal.connect(self.gui.set_song_info)
+      self.custom_worker_thread.song_info_signal.connect(self.handle_song_info_changed)
       self.custom_worker_thread.song_index_signal.connect(self.handle_song_changed)
       self.custom_worker_thread.start()
 
@@ -471,6 +479,10 @@ class QtController(QtCore.QObject):
    def handle_song_changed(self, index):
       if index is not None:
          self.gui.set_selected_track_in_list(index)
+
+   def handle_song_info_changed(self, song_info):
+      self.gui.set_song_info(song_info)
+      self.window.set_window_title(song_info=song_info)
 
    def set_theme(self, theme):
       if theme == "dark":
