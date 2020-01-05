@@ -37,9 +37,19 @@ class Library:
             track_id = track['trackId']
             trimmed_pl.append(track_id)
             if track_id not in self.songs:
+               if 'track' not in track:
+                  log.warning("Track %s has no 'track' dict", track_id)
+                  continue
+               track_info = track['track']
+               artist = track_info.get('artist')
+               title = track_info.get('title')
+               if artist is None or title is None:
+                  log.warning("Track %s did not have both title and artist. Found %r, %r",
+                              track_id, title, artist)
+                  continue
                self.songs[track_id] = {
-                  'artist': track.get('artist'),
-                  'title': track.get('title'),
+                  'artist': artist,
+                  'title': title,
                }
 
          self.playlist_contents[pl['id']] = trimmed_pl
@@ -50,6 +60,7 @@ class Library:
          song['id']: {
             'artist': song.get('artist'),
             'title': song.get('title'),
+            'song': song,
          }
          for song in songs
       }
