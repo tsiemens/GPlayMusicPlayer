@@ -233,7 +233,7 @@ class TrackPlayer:
 
    def play_next_track(self):
       current_track_index = self.current_track_index.value
-      log.info("current_track_index %d", current_track_index)
+      log.info("current_track_index %s", str(current_track_index))
       if current_track_index is None:
          current_track_index = 0
       else:
