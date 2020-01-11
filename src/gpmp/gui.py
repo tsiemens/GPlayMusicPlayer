@@ -7,6 +7,7 @@ import qdarkstyle
 from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2.QtWidgets import QSizePolicy
 
+import gpmp.log
 from gpmp.log import get_logger
 from gpmp.player import Library, TrackTimingInfo, TrackPlayer
 from gpmp.widgets import MediaSlider
@@ -28,6 +29,26 @@ class Settings:
    def theme(self):
       return self.settings.value("theme", "light")
 
+class TextEditDialog(QtWidgets.QWidget):
+   def __init__(self, ok_handler):
+      super().__init__()
+      self.ok_handler = ok_handler
+
+      self.setWindowTitle("Logging Levels")
+
+      self.layout = QtWidgets.QVBoxLayout()
+      self.editor = QtWidgets.QLineEdit()
+      self.editor.setText(gpmp.log.get_logging_levels_string())
+      self.layout.addWidget(self.editor)
+
+      self.ok_button = QtWidgets.QPushButton("OK")
+      self.ok_button.clicked.connect(self.ok_handler)
+
+      self.layout.addWidget(self.ok_button)
+
+      self.setLayout(self.layout)
+      self.resize(400, 10)
+
 class Window(QtWidgets.QMainWindow):
    key_pressed_signal = QtCore.Signal(QtGui.QKeyEvent)
    theme_changed_signal = QtCore.Signal(str)
@@ -41,6 +62,7 @@ class Window(QtWidgets.QMainWindow):
       self.setCentralWidget(self.widget)
       self.layout_menu()
       self.set_checked_theme(theme)
+      self.log_dialog = None
 
    def layout_menu(self):
       mb = self.menuBar()
@@ -63,6 +85,10 @@ class Window(QtWidgets.QMainWindow):
       _add_theme("light", "Light")
       _add_theme("dark", "Dark")
 
+      tools_menu = mb.addMenu("Tools")
+      self.logging_level_action = tools_menu.addAction("Logging Levels")
+      self.logging_level_action.triggered.connect(self.on_logging_level_menu_action)
+
    # Overrides
    def keyPressEvent(self, event):
       super(Window, self).keyPressEvent(event)
@@ -81,13 +107,23 @@ class Window(QtWidgets.QMainWindow):
             self.theme_changed_signal.emit(theme)
             return
 
-   def set_window_title(self, song_info:str=None):
+   def on_logging_level_menu_action(self):
+      def on_ok():
+         nonlocal self
+         log_setting = self.log_dialog.editor.text()
+         gpmp.log.set_logger_levels(log_setting)
+         self.log_dialog.close()
+
+      self.log_dialog = TextEditDialog(on_ok)
+      self.log_dialog.show()
+
+   def set_window_title(self, song_info: str = None):
       if song_info is None:
          self.setWindowTitle("gplaymusicplayer")
       else:
-         # 𝅘𝅥𝅮  Song title - Artist
+         # 𝅘𝅥𝅮  Song title - Artist   𝅘𝅥𝅮
          note_char = "\U0001D160"
-         self.setWindowTitle("{}   {}   {}".format(note_char, song_info, note_char))
+         self.setWindowTitle("{note}   {song}   {note}".format(note=note_char, song=song_info))
 
 class WindowContent(QtWidgets.QWidget):
    # pylint: disable-msg=too-many-instance-attributes

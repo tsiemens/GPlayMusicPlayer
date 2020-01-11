@@ -26,31 +26,52 @@ LEVEL_TO_LEVEL_ABREV = {
       l: a for a, l in LEVEL_ABREV_TO_LEVEL.items()
    }
 
-_logging_levels = {} # pylint: disable-msg=invalid-name
-def set_logger_levels():
-   """Gets the logging levels specified in the LOGGING env var.
-   Should be formatted as: <name>/(E|W|I|D),...
-   """
-
-   logging_levels_str = os.environ.get("LOGGING")
-   if not logging_levels_str:
-      return
-   levels = logging_levels_str.split(',')
-   for name_and_level in levels:
-      if '/' in name_and_level:
-         name, level = name_and_level.strip().split('/')
-      else:
-         name = name_and_level.strip()
-         level = 'D'
-
-      full_level = LEVEL_ABREV_TO_LEVEL.get(level, logging.WARNING)
-      _logging_levels[name] = full_level
-
-set_logger_levels()
+_all_loggers = {}
 
 _log_logger = logging.getLogger("log") # pylint: disable-msg=invalid-name
 _log_logger.setLevel(logging.INFO)
 _log_logger.addHandler(_HANDLER)
+_all_loggers["log"] = _log_logger
+
+_logging_levels = {} # pylint: disable-msg=invalid-name
+
+def update_logger_level(name, logger):
+   level = _logging_levels.get(name, logging.WARNING)
+   _log_logger.info("%s/%s", name, LEVEL_TO_LEVEL_ABREV[level])
+   logger.setLevel(_logging_levels.get(name, logging.WARNING))
+
+def set_logger_levels(logging_levels_str=None):
+   """Gets the logging levels specified in the LOGGING env var.
+   Should be formatted as: <name>/(E|W|I|D),...
+   """
+
+   if logging_levels_str is None:
+      logging_levels_str = os.environ.get("LOGGING")
+
+   _logging_levels.clear()
+
+   if logging_levels_str:
+      levels = logging_levels_str.split(',')
+      for name_and_level in levels:
+         if '/' in name_and_level:
+            name, level = name_and_level.strip().split('/')
+         else:
+            name = name_and_level.strip()
+            level = 'D'
+
+         full_level = LEVEL_ABREV_TO_LEVEL.get(level, logging.WARNING)
+         _logging_levels[name] = full_level
+
+   for name, log in _all_loggers.items():
+      update_logger_level(name, log)
+
+set_logger_levels()
+
+def get_logging_levels_string():
+   return ','.join(
+      logname + '/' + LEVEL_TO_LEVEL_ABREV[level]
+      for logname, level in _logging_levels.items()
+   )
 
 def get_logger(name=None) -> logging.Logger:
    if name is None:
@@ -59,8 +80,7 @@ def get_logger(name=None) -> logging.Logger:
       name = os.path.split(stack[-2].filename)[1].split('.')[0]
 
    log = logging.getLogger(name)
-   level = _logging_levels.get(name, logging.WARNING)
-   _log_logger.info("%s/%s", name, LEVEL_TO_LEVEL_ABREV[level])
-   log.setLevel(_logging_levels.get(name, logging.WARNING))
+   _all_loggers[name] = log
+   update_logger_level(name, log)
    log.addHandler(_HANDLER)
    return log
