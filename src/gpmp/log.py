@@ -3,6 +3,7 @@
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+import sys
 import tempfile
 import traceback
 
@@ -12,9 +13,23 @@ _LOG_FORMATTER = logging.Formatter(_FORMAT)
 
 LOG_FILE = os.path.join(tempfile.gettempdir(), "gplaymusicplayer.log")
 
-_HANDLER = RotatingFileHandler(LOG_FILE, mode='a', maxBytes=5*1024*1024,
-                               backupCount=1, encoding=None, delay=0)
-_HANDLER.setFormatter(_LOG_FORMATTER)
+_handlers = []
+def _make_handlers():
+   handler = RotatingFileHandler(LOG_FILE, mode='a', maxBytes=5*1024*1024,
+                                 backupCount=1, encoding=None, delay=0)
+   handler.setFormatter(_LOG_FORMATTER)
+   _handlers.append(handler)
+
+   if 'LOG_STDERR' in os.environ:
+      handler = logging.StreamHandler(sys.stderr)
+      handler.setFormatter(_LOG_FORMATTER)
+      _handlers.append(handler)
+
+_make_handlers()
+
+def _add_handlers_to_logger(logger):
+   for handler in _handlers:
+      logger.addHandler(handler)
 
 LEVEL_ABREV_TO_LEVEL = {
       'E': logging.ERROR,
@@ -30,7 +45,7 @@ _all_loggers = {}
 
 _log_logger = logging.getLogger("log") # pylint: disable-msg=invalid-name
 _log_logger.setLevel(logging.INFO)
-_log_logger.addHandler(_HANDLER)
+_add_handlers_to_logger(_log_logger)
 _all_loggers["log"] = _log_logger
 
 _logging_levels = {} # pylint: disable-msg=invalid-name
@@ -82,5 +97,5 @@ def get_logger(name=None) -> logging.Logger:
    log = logging.getLogger(name)
    _all_loggers[name] = log
    update_logger_level(name, log)
-   log.addHandler(_HANDLER)
+   _add_handlers_to_logger(log)
    return log

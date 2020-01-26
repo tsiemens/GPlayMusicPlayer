@@ -18,3 +18,10 @@ class Atomic:
       with self._lock:
          self._value = val
          return self._value
+
+   def set_if_equal(self, val_to_match, new_val_if_eq):
+      with self._lock:
+         if self._value == val_to_match:
+            self._value = new_val_if_eq
+            return True
+      return False

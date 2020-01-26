@@ -2,6 +2,7 @@
 """Main driver for gplaymusicplayer. Defaults to GUI"""
 
 import argparse
+import os
 import signal
 
 from setproctitle import setproctitle
@@ -15,6 +16,11 @@ from gpmp.util import pdb # pylint: disable-msg=unused-import
 log = get_logger()
 
 def main():
+   if "RANDSEED" in os.environ:
+      # pylint: disable-msg=import-outside-toplevel
+      import random
+      random.seed(int(os.environ["RANDSEED"]))
+
    setproctitle("gplaymusicplayer")
 
    parser = argparse.ArgumentParser()
@@ -25,9 +31,29 @@ def main():
                        help="Run in CLI mode")
    parser.add_argument('--gui-only-test', action='store_true',
                        help="Don't load the player (for testing)")
+   parser.add_argument('--error-sim-rate', type=float, default=1.0,
+                       help="Debug flag - rate (0.0 - 1.0) at which simulated errors occur")
+   parser.add_argument('--error-sim-attr-re', type=str, default=None,
+                       help="Debug flag - regex pattern to match against api calls which "
+                            "may simulate errors")
+   parser.add_argument('--error-sim-enable', action='store_true',
+                       help="Debug flag - enable API error simulations")
+   parser.add_argument('--error-sim-timeout', type=int, default=0,
+                       help="Debug flag - timeout in seconds for API error simulations")
    args = parser.parse_args()
 
    api = Client()
+   # Set up error simulation settings
+   api.set_simulated_error_rate(args.error_sim_rate)
+   if args.error_sim_attr_re:
+      api.set_simulated_error_function_re(args.error_sim_attr_re)
+   api.simulated_timeout_delay = args.error_sim_timeout
+   if args.error_sim_enable:
+      if args.error_sim_timeout > 0:
+         api.simulate_timeouts = True
+      else:
+         api.simulate_immediate_error = True
+
    hotkey_mgr = SystemHotkey()
    library = Library(api)
    player = TrackPlayer(api, hotkey_mgr, library)
@@ -39,7 +65,7 @@ def main():
       # pylint: disable-msg=import-outside-toplevel
       from gpmp import gui
       app = gui.make_app()
-      _controller = gui.QtController(app, player,
+      _controller = gui.QtController(app, api, player,
                                      init_player=not args.gui_only_test)
 
       def sighandler(signum, _frame):

@@ -63,6 +63,7 @@ class Window(QtWidgets.QMainWindow):
       self.layout_menu()
       self.set_checked_theme(theme)
       self.log_dialog = None
+      self.timeout_debug_action_changed_func = lambda checked: None
 
    def layout_menu(self):
       mb = self.menuBar()
@@ -88,6 +89,11 @@ class Window(QtWidgets.QMainWindow):
       tools_menu = mb.addMenu("Tools")
       self.logging_level_action = tools_menu.addAction("Logging Levels")
       self.logging_level_action.triggered.connect(self.on_logging_level_menu_action)
+
+      timeout_debug_action = tools_menu.addAction("Simulate API Timeouts")
+      timeout_debug_action.setCheckable(True)
+      timeout_debug_action.triggered.connect(self.on_timeout_debug_action_checkbox)
+      tools_menu.addAction(timeout_debug_action)
 
    # Overrides
    def keyPressEvent(self, event):
@@ -124,6 +130,9 @@ class Window(QtWidgets.QMainWindow):
          # 𝅘𝅥𝅮  Song title - Artist   𝅘𝅥𝅮
          note_char = "\U0001D160"
          self.setWindowTitle("{note}   {song}   {note}".format(note=note_char, song=song_info))
+
+   def on_timeout_debug_action_checkbox(self, checked):
+      self.timeout_debug_action_changed_func(checked)
 
 class WindowContent(QtWidgets.QWidget):
    # pylint: disable-msg=too-many-instance-attributes
@@ -274,6 +283,7 @@ class WindowContent(QtWidgets.QWidget):
       self.set_selected_track_in_list(0)
 
    def set_selected_track_in_list(self, index, unselect=False):
+      log.debug("index: %r, unselect: %r", index, unselect)
       if not unselect and self.selected_track_index is not None:
          self.set_selected_track_in_list(self.selected_track_index, unselect=True)
 
@@ -339,10 +349,10 @@ class PlayerStateMonitorThread(QtCore.QThread):
       self.current_song_index = None
       self.current_song_info = None
       self.interrupted = False
-      self.self_terminated = False
+      self.run_exited = False
 
    def __del__(self):
-      if not self.self_terminated:
+      if not self.run_exited:
          self.wait()
 
    def interrupt(self):
@@ -369,8 +379,7 @@ class PlayerStateMonitorThread(QtCore.QThread):
          self.send_ui_update_signal()
 
       log.info("WorkerThread interrupted")
-      self.terminate()
-      self.self_terminated = True
+      self.run_exited = True
 
 class QtController(QtCore.QObject):
    # pylint: disable-msg=too-many-instance-attributes
@@ -381,12 +390,13 @@ class QtController(QtCore.QObject):
 
    worker_interrupt_signal = QtCore.Signal()
 
-   def __init__(self, qapp, player, init_player=True):
+   def __init__(self, qapp, api, player, init_player=True):
       # Note qapp is being used as the parent attribute in the super
       super().__init__(qapp)
 
       self.settings = Settings()
 
+      self.api = api
       self.player = player
       self.init_player = init_player
 
@@ -428,6 +438,9 @@ class QtController(QtCore.QObject):
 
       self.window.theme_changed_signal.connect(self.set_theme)
       self.window.key_pressed_signal.connect(self.on_window_key_press)
+      def _set_sim_timouts(enable):
+         self.api.simulate_timeouts = enable
+      self.window.timeout_debug_action_changed_func = _set_sim_timouts
 
    def create_worker_threads(self):
       self.parent().aboutToQuit.connect(self.force_worker_quit)
@@ -471,9 +484,6 @@ class QtController(QtCore.QObject):
          if self.custom_worker_thread.isRunning():
             self.worker_interrupt_signal.emit()
             self.custom_worker_thread.wait()
-            #  self.custom_worker_thread.terminate()
-            #  if self.custom_worker_thread.isRunning():
-               #  self.custom_worker_thread.wait()
       except Exception as e: # pylint: disable-msg=broad-except
          log.error("caught exception: %s", e)
 
